@@ -260,7 +260,12 @@ export class TaskExecutor {
     if (typeof input === 'object' && input !== null) {
       const str = JSON.stringify(input);
       if (str.length > 1000) {
-        return JSON.parse(str.substring(0, 1000) + '"}');
+        // Try to parse truncated JSON, fallback to string if invalid
+        try {
+          return JSON.parse(str.substring(0, 1000) + '"}');
+        } catch {
+          return str.substring(0, 1000) + '... (truncated)';
+        }
       }
     }
     return input;
