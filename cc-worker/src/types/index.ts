@@ -36,6 +36,8 @@ export interface TaskLog {
 export interface TaskAssignEvent {
   taskId: string;
   prompt: string;
+  sessionId?: string;      // Session ID to resume (for follow-ups)
+  parentTaskId?: string;   // Parent task reference
 }
 
 export interface TaskCancelEvent {
@@ -74,6 +76,7 @@ export interface TaskCompletedEvent {
   taskId: string;
   result: string;
   duration: number;
+  sessionId?: string;      // Session ID for future resume
 }
 
 export interface TaskFailedEvent {

@@ -221,6 +221,7 @@ export class WorkerManager {
           result: data.result,
           duration: data.duration,
           completedAt: new Date(),
+          sessionId: data.sessionId,  // Store session ID for future resume
         },
       });
 
@@ -234,7 +235,7 @@ export class WorkerManager {
       this.io.to(`task:${data.taskId}`).emit('task:updated', task);
       this.io.emit('worker:updated', { id: worker.workerId, status: 'ONLINE' });
 
-      console.log(`[Task] Completed: ${data.taskId} (${data.duration}ms)`);
+      console.log(`[Task] Completed: ${data.taskId} (${data.duration}ms, session: ${data.sessionId || 'none'})`);
     } catch (error) {
       console.error('[Task] Complete error:', error);
     }
@@ -298,14 +299,25 @@ export class WorkerManager {
   }
 
   // Assign task to a specific worker
-  async assignTask(workerId: string, taskId: string, prompt: string): Promise<boolean> {
+  async assignTask(
+    workerId: string,
+    taskId: string,
+    prompt: string,
+    sessionId?: string,      // Session ID to resume (for follow-ups)
+    parentTaskId?: string    // Parent task reference
+  ): Promise<boolean> {
     const socketId = this.workerIdToSocket.get(workerId);
     if (!socketId) return false;
 
     const worker = this.workers.get(socketId);
     if (!worker) return false;
 
-    worker.socket.emit('task:assign', { taskId, prompt });
+    worker.socket.emit('task:assign', { taskId, prompt, sessionId, parentTaskId });
+
+    if (sessionId) {
+      console.log(`[Task] Assigned follow-up: ${taskId} (session: ${sessionId}, parent: ${parentTaskId})`);
+    }
+
     return true;
   }
 

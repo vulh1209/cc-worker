@@ -48,7 +48,7 @@ export class WorkerClient {
   }
 
   private async handleTaskAssigned(data: TaskAssignEvent): Promise<void> {
-    const { taskId, prompt } = data;
+    const { taskId, prompt, sessionId, parentTaskId } = data;
 
     // Check if already executing a task
     if (this.taskExecutor.isExecuting) {
@@ -60,13 +60,18 @@ export class WorkerClient {
       return;
     }
 
+    // Log if this is a follow-up task
+    if (sessionId && parentTaskId) {
+      logger.info(`Received follow-up task ${taskId} (parent: ${parentTaskId}, session: ${sessionId})`);
+    }
+
     // Update status to BUSY
     this.wsClient.updateStatus('BUSY');
 
     // Notify server that task has started
     this.wsClient.sendTaskStarted({ taskId });
 
-    // Execute the task
+    // Execute the task with optional session resume
     const result = await this.taskExecutor.execute(taskId, prompt, (log) => {
       // Stream logs to server
       this.wsClient.sendTaskLog({
@@ -75,7 +80,7 @@ export class WorkerClient {
         content: log.content,
         timestamp: new Date().toISOString(),
       });
-    });
+    }, sessionId);  // Pass sessionId for resume
 
     // Send result to server
     if (result.success) {
@@ -83,6 +88,7 @@ export class WorkerClient {
         taskId,
         result: result.result || 'Task completed',
         duration: result.duration,
+        sessionId: result.sessionId,  // Include session ID for future resume
       });
     } else {
       this.wsClient.sendTaskFailed({

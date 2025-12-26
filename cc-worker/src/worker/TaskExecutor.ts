@@ -15,6 +15,7 @@ export interface TaskExecutionResult {
   result?: string;
   error?: string;
   duration: number;
+  sessionId?: string;  // Session ID for future resume
 }
 
 export interface TaskLogCallback {
@@ -33,36 +34,58 @@ export class TaskExecutor {
   async execute(
     taskId: string,
     prompt: string,
-    onLog: TaskLogCallback
+    onLog: TaskLogCallback,
+    resumeSessionId?: string  // Optional session ID to resume
   ): Promise<TaskExecutionResult> {
     this.currentTaskId = taskId;
     this.abortController = new AbortController();
 
     const startTime = Date.now();
     let finalResult = '';
+    let capturedSessionId: string | undefined;
 
     logger.taskStart(taskId, prompt);
 
     // Emit system log for task start
     onLog({
       type: 'SYSTEM',
-      content: { message: 'Task execution started', prompt: prompt.substring(0, 200) },
+      content: {
+        message: resumeSessionId
+          ? 'Resuming session with follow-up prompt'
+          : 'Task execution started',
+        prompt: prompt.substring(0, 200),
+        ...(resumeSessionId && { resumeSessionId }),
+      },
     });
 
     try {
+      // Build query options with optional session resume
+      const queryOptions: Parameters<typeof query>[0]['options'] = {
+        abortController: this.abortController,
+        allowedTools: ['Read', 'Write', 'Edit', 'Bash', 'Glob', 'Grep', 'LS'],
+        cwd: this.config.workingDirectory,
+        maxTurns: 50, // Limit to prevent runaway tasks
+      };
+
+      // Add resume option if session ID provided
+      if (resumeSessionId) {
+        queryOptions.resume = resumeSessionId;
+        logger.info(`Resuming session: ${resumeSessionId}`);
+      }
+
       // Execute Claude query with streaming
       for await (const message of query({
         prompt,
-        options: {
-          abortController: this.abortController,
-          allowedTools: ['Read', 'Write', 'Edit', 'Bash', 'Glob', 'Grep', 'LS'],
-          cwd: this.config.workingDirectory,
-          maxTurns: 50, // Limit to prevent runaway tasks
-        },
+        options: queryOptions,
       })) {
         // Check for abort
         if (this.abortController.signal.aborted) {
           throw new Error('Task cancelled');
+        }
+
+        // Capture session_id from messages
+        if ('session_id' in message && message.session_id) {
+          capturedSessionId = message.session_id as string;
         }
 
         // Process message based on type
@@ -85,13 +108,14 @@ export class TaskExecutor {
 
       onLog({
         type: 'SYSTEM',
-        content: { message: 'Task completed successfully' },
+        content: { message: 'Task completed successfully', sessionId: capturedSessionId },
       });
 
       return {
         success: true,
         result: finalResult || 'Task completed',
         duration,
+        sessionId: capturedSessionId,
       };
     } catch (error) {
       const duration = Date.now() - startTime;
@@ -108,6 +132,7 @@ export class TaskExecutor {
         success: false,
         error: errorMessage,
         duration,
+        sessionId: capturedSessionId,  // Return session even on failure
       };
     } finally {
       this.abortController = null;

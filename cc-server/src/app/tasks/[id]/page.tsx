@@ -9,6 +9,8 @@ import {
 } from '@/components/terminal-ui';
 import { LiveLogViewer } from '@/components/LiveLogViewer';
 import { MarkdownRenderer } from '@/components/MarkdownRenderer';
+import { ChatInput } from '@/components/ChatInput';
+import { TaskChainNav } from '@/components/TaskChainNav';
 import { formatRelativeTime, formatDuration } from '@/lib/utils';
 import prisma from '@/lib/prisma';
 
@@ -25,6 +27,14 @@ async function getTask(id: string) {
       },
       logs: {
         orderBy: { timestamp: 'asc' },
+      },
+      // Include parent and follow-up tasks for chain navigation
+      parentTask: {
+        select: { id: true, prompt: true, status: true, createdAt: true },
+      },
+      followUpTasks: {
+        select: { id: true, prompt: true, status: true, createdAt: true },
+        orderBy: { createdAt: 'asc' },
       },
     },
   });
@@ -44,6 +54,8 @@ export default async function TaskDetailPage({ params }: PageProps) {
   const isPending = task.status === 'PENDING';
   const isCompleted = task.status === 'COMPLETED';
   const isFailed = task.status === 'FAILED';
+  const isFollowUp = !!task.parentTaskId;
+  const canContinue = isCompleted && task.sessionId;
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -56,6 +68,11 @@ export default async function TaskDetailPage({ params }: PageProps) {
               Task
             </h1>
             <StatusBadge status={task.status as any} />
+            {isFollowUp && (
+              <span className="terminal-badge terminal-badge-info text-[10px] px-1.5 py-0">
+                FOLLOW-UP
+              </span>
+            )}
           </div>
           <p className="text-sm text-muted-foreground mt-1 font-mono">
             {task.id}
@@ -70,6 +87,13 @@ export default async function TaskDetailPage({ params }: PageProps) {
           </Link>
         </div>
       </div>
+
+      {/* Task Chain Navigation */}
+      <TaskChainNav
+        parentTask={task.parentTask}
+        followUpTasks={task.followUpTasks}
+        currentTaskId={task.id}
+      />
 
       {/* Progress Bar for Running Tasks */}
       {isRunning && (
@@ -242,6 +266,18 @@ export default async function TaskDetailPage({ params }: PageProps) {
               />
             </div>
           </TerminalCard>
+
+          {/* Continue Conversation - only show for completed tasks with session */}
+          {canContinue && (
+            <TerminalCard title="Continue Conversation">
+              <ChatInput
+                taskId={task.id}
+                sessionId={task.sessionId}
+                workerStatus={task.worker?.status || null}
+                workerName={task.worker?.name || null}
+              />
+            </TerminalCard>
+          )}
         </div>
       </div>
     </div>

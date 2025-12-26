@@ -44,10 +44,18 @@ model Task {
   createdAt    DateTime   @default(now())
   updatedAt    DateTime   @updatedAt
 
+  // Session continuity for follow-up conversations
+  sessionId     String?   // Claude Code SDK session ID for resume
+  parentTaskId  String?   // Reference to parent task in conversation chain
+  parentTask    Task?     @relation("TaskChain", fields: [parentTaskId], references: [id])
+  followUpTasks Task[]    @relation("TaskChain")
+
   @@index([status])
   @@index([workerId])
   @@index([createdAt])
   @@index([priority, createdAt]) // For queue ordering
+  @@index([parentTaskId])
+  @@index([sessionId])
 }
 
 model TaskLog {
