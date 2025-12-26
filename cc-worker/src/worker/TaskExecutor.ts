@@ -59,11 +59,19 @@ export class TaskExecutor {
     });
 
     try {
+      // Validate working directory
+      const cwd = this.config.workingDirectory;
+      if (!cwd || typeof cwd !== 'string') {
+        throw new Error(`Invalid working directory: ${cwd}. Please set CC_WORKING_DIR environment variable.`);
+      }
+
+      logger.info(`Using working directory: ${cwd}`);
+
       // Build query options with optional session resume
       const queryOptions: Parameters<typeof query>[0]['options'] = {
         abortController: this.abortController,
         allowedTools: ['Read', 'Write', 'Edit', 'Bash', 'Glob', 'Grep', 'LS'],
-        cwd: this.config.workingDirectory,
+        cwd,
         maxTurns: 50, // Limit to prevent runaway tasks
       };
 

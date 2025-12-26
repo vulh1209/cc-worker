@@ -155,68 +155,72 @@ function WorkerGridCard({
   const isBusy = worker.status === 'BUSY';
 
   return (
-    <Link
-      href={`/workers/${worker.id}`}
+    <div
       className="block animate-slide-in"
       style={{ animationDelay: `${index * 50}ms` }}
     >
       <TerminalCard className="h-full hover:border-primary/30 transition-all group">
-        {/* Header */}
-        <div className="flex items-start justify-between mb-4">
-          <div className="flex items-center gap-3">
-            <span
-              className={`status-indicator ${
-                isOnline ? 'status-online' :
-                isBusy ? 'status-busy' :
-                'status-offline'
-              }`}
-            />
-            <div>
-              <h3 className="font-semibold text-foreground group-hover:text-primary transition-colors">
-                {worker.name}
-              </h3>
-              <p className="text-xs text-muted-foreground">
-                {worker.hostname || 'unknown host'}
-              </p>
+        {/* Clickable area for navigation - using Link properly */}
+        <Link href={`/workers/${worker.id}`} className="block">
+          {/* Header */}
+          <div className="flex items-start justify-between mb-4">
+            <div className="flex items-center gap-3">
+              <span
+                className={`status-indicator ${
+                  isOnline ? 'status-online' :
+                  isBusy ? 'status-busy' :
+                  'status-offline'
+                }`}
+              />
+              <div>
+                <h3 className="font-semibold text-foreground group-hover:text-primary transition-colors">
+                  {worker.name}
+                </h3>
+                <p className="text-xs text-muted-foreground">
+                  {worker.hostname || 'unknown host'}
+                </p>
+              </div>
+            </div>
+            <StatusBadge status={worker.status as any} size="sm" showDot={false} />
+          </div>
+
+          {/* Info Grid */}
+          <div className="space-y-2 text-sm">
+            <div className="flex items-center justify-between">
+              <span className="text-muted-foreground">OS</span>
+              <span className="text-foreground">{worker.os || 'unknown'}</span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-muted-foreground">Tasks</span>
+              <span className="text-foreground tabular-nums">{worker._count?.tasks || 0}</span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-muted-foreground">Last seen</span>
+              <span className="text-foreground">
+                {formatRelativeTime(worker.lastSeen)}
+              </span>
             </div>
           </div>
-          <StatusBadge status={worker.status as any} size="sm" showDot={false} />
-        </div>
 
-        {/* Info Grid */}
-        <div className="space-y-2 text-sm">
-          <div className="flex items-center justify-between">
-            <span className="text-muted-foreground">OS</span>
-            <span className="text-foreground">{worker.os || 'unknown'}</span>
-          </div>
-          <div className="flex items-center justify-between">
-            <span className="text-muted-foreground">Tasks</span>
-            <span className="text-foreground tabular-nums">{worker._count?.tasks || 0}</span>
-          </div>
-          <div className="flex items-center justify-between">
-            <span className="text-muted-foreground">Last seen</span>
-            <span className="text-foreground">
-              {formatRelativeTime(worker.lastSeen)}
-            </span>
-          </div>
-        </div>
-
-        {/* Status Bar */}
-        {isBusy && (
-          <div className="mt-4 pt-4 border-t border-border/30">
-            <div className="flex items-center justify-between text-xs mb-2">
-              <span className="text-yellow-400">executing task...</span>
-              <span className="text-muted-foreground animate-pulse">●</span>
+          {/* Status Bar */}
+          {isBusy && (
+            <div className="mt-4 pt-4 border-t border-border/30">
+              <div className="flex items-center justify-between text-xs mb-2">
+                <span className="text-yellow-400">executing task...</span>
+                <span className="text-muted-foreground animate-pulse">●</span>
+              </div>
+              <ProgressBar value={50} color="yellow" striped size="sm" />
             </div>
-            <ProgressBar value={50} color="yellow" striped size="sm" />
-          </div>
-        )}
+          )}
+        </Link>
 
-        {/* Actions */}
+        {/* Actions - outside of Link to avoid nested links */}
         <div className="mt-4 pt-4 border-t border-border/30 flex gap-2">
-          <TerminalButton variant="ghost" size="sm" className="flex-1">
-            view details
-          </TerminalButton>
+          <Link href={`/workers/${worker.id}`} className="flex-1">
+            <TerminalButton variant="ghost" size="sm" className="w-full">
+              view details
+            </TerminalButton>
+          </Link>
           {isOnline && (
             <Link href={`/tasks/new?workerId=${worker.id}`} className="flex-1">
               <TerminalButton variant="primary" size="sm" className="w-full">
@@ -226,6 +230,6 @@ function WorkerGridCard({
           )}
         </div>
       </TerminalCard>
-    </Link>
+    </div>
   );
 }
