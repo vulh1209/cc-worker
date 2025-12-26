@@ -60,9 +60,15 @@ export class TaskExecutor {
 
     try {
       // Validate working directory
-      const cwd = this.config.workingDirectory;
+      let cwd = this.config.workingDirectory;
       if (!cwd || typeof cwd !== 'string') {
         throw new Error(`Invalid working directory: ${cwd}. Please set CC_WORKING_DIR environment variable.`);
+      }
+
+      // Normalize path for Windows (convert forward slashes to backslashes if on Windows)
+      if (process.platform === 'win32' && cwd.includes('/')) {
+        cwd = cwd.replace(/\//g, '\\');
+        logger.info(`Normalized Windows path: ${cwd}`);
       }
 
       logger.info(`Using working directory: ${cwd}`);
@@ -73,13 +79,27 @@ export class TaskExecutor {
         allowedTools: ['Read', 'Write', 'Edit', 'Bash', 'Glob', 'Grep', 'LS'],
         cwd,
         maxTurns: 50, // Limit to prevent runaway tasks
+        ...(this.config.cliPath && { pathToClaudeCodeExecutable: this.config.cliPath }),
       };
+
+      if (this.config.cliPath) {
+        logger.info(`Using CLI path: ${this.config.cliPath}`);
+      }
 
       // Add resume option if session ID provided
       if (resumeSessionId) {
         queryOptions.resume = resumeSessionId;
         logger.info(`Resuming session: ${resumeSessionId}`);
       }
+
+      // Debug log the full query options
+      logger.info(`Query options: ${JSON.stringify({
+        prompt: prompt.substring(0, 100),
+        cwd: queryOptions.cwd,
+        maxTurns: queryOptions.maxTurns,
+        allowedTools: queryOptions.allowedTools,
+        resume: queryOptions.resume,
+      })}`);
 
       // Execute Claude query with streaming
       for await (const message of query({

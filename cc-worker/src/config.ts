@@ -12,6 +12,7 @@ const configSchema = z.object({
   apiKey: z.string().min(1).describe('Worker API key for authentication'),
   workerName: z.string().min(1).describe('Human-readable worker name'),
   workingDirectory: z.string().min(1).describe('Directory for Claude to work in'),
+  cliPath: z.string().optional().describe('Path to Claude CLI executable (for non-npm installations)'),
   maxConcurrentTasks: z.number().int().min(1).max(5).default(1),
   reconnectInterval: z.number().int().min(1000).default(5000),
   heartbeatInterval: z.number().int().min(5000).default(30000),
@@ -50,6 +51,7 @@ function loadConfigFromEnv(): Partial<WorkerConfig> {
     apiKey: process.env.CC_API_KEY,
     workerName: process.env.CC_WORKER_NAME,
     workingDirectory: process.env.CC_WORKING_DIR,
+    cliPath: process.env.CC_CLI_PATH,
     maxConcurrentTasks: process.env.CC_MAX_CONCURRENT_TASKS
       ? parseInt(process.env.CC_MAX_CONCURRENT_TASKS, 10)
       : undefined,
@@ -95,6 +97,7 @@ export function loadConfig(): WorkerConfig {
   console.log('[Config]   apiKey:', maskSensitive(merged.apiKey as string));
   console.log('[Config]   workerName:', merged.workerName || '<not set>');
   console.log('[Config]   workingDirectory:', merged.workingDirectory || '<not set>');
+  console.log('[Config]   cliPath:', merged.cliPath || '<auto-detect>');
   console.log('[Config]   maxConcurrentTasks:', merged.maxConcurrentTasks ?? 1);
   console.log('[Config]   reconnectInterval:', merged.reconnectInterval ?? 5000);
   console.log('[Config]   heartbeatInterval:', merged.heartbeatInterval ?? 30000);
