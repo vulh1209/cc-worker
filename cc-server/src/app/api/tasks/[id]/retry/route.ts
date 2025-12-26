@@ -36,21 +36,33 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       );
     }
 
-    // Create a new task with the same prompt
-    const newTask = await prisma.task.create({
-      data: {
-        prompt: task.prompt,
-        priority: task.priority,
-        status: 'PENDING',
-        // Optionally assign to same worker if specified
-        workerId: task.workerId,
-      },
+    // Create new task and delete old task in a transaction
+    const newTask = await prisma.$transaction(async (tx) => {
+      // Create a new task with the same prompt
+      const created = await tx.task.create({
+        data: {
+          prompt: task.prompt,
+          priority: task.priority,
+          status: 'PENDING',
+          // Optionally assign to same worker if specified
+          workerId: task.workerId,
+        },
+      });
+
+      // Delete old task and its logs
+      await tx.taskLog.deleteMany({
+        where: { taskId: id },
+      });
+      await tx.task.delete({
+        where: { id },
+      });
+
+      return created;
     });
 
     return NextResponse.json({
       success: true,
-      message: 'Task retried',
-      originalTaskId: id,
+      message: 'Task retried and old task deleted',
       newTaskId: newTask.id,
     });
   } catch (error) {
