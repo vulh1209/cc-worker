@@ -4,48 +4,68 @@
 
 @layer base {
   :root {
-    --background: 0 0% 100%;
-    --foreground: 222.2 84% 4.9%;
-    --card: 0 0% 100%;
-    --card-foreground: 222.2 84% 4.9%;
-    --popover: 0 0% 100%;
-    --popover-foreground: 222.2 84% 4.9%;
-    --primary: 222.2 47.4% 11.2%;
-    --primary-foreground: 210 40% 98%;
-    --secondary: 210 40% 96.1%;
-    --secondary-foreground: 222.2 47.4% 11.2%;
-    --muted: 210 40% 96.1%;
-    --muted-foreground: 215.4 16.3% 46.9%;
-    --accent: 210 40% 96.1%;
-    --accent-foreground: 222.2 47.4% 11.2%;
-    --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 210 40% 98%;
-    --border: 214.3 31.8% 91.4%;
-    --input: 214.3 31.8% 91.4%;
-    --ring: 222.2 84% 4.9%;
-    --radius: 0.5rem;
-  }
+    /*
+     * Terminal-Inspired Industrial Theme
+     * Dark, gritty, monospace-heavy with Claude accents
+     */
 
-  .dark {
-    --background: 222.2 84% 4.9%;
-    --foreground: 210 40% 98%;
-    --card: 222.2 84% 4.9%;
-    --card-foreground: 210 40% 98%;
-    --popover: 222.2 84% 4.9%;
-    --popover-foreground: 210 40% 98%;
-    --primary: 210 40% 98%;
-    --primary-foreground: 222.2 47.4% 11.2%;
-    --secondary: 217.2 32.6% 17.5%;
-    --secondary-foreground: 210 40% 98%;
-    --muted: 217.2 32.6% 17.5%;
-    --muted-foreground: 215 20.2% 65.1%;
-    --accent: 217.2 32.6% 17.5%;
-    --accent-foreground: 210 40% 98%;
-    --destructive: 0 62.8% 30.6%;
-    --destructive-foreground: 210 40% 98%;
-    --border: 217.2 32.6% 17.5%;
-    --input: 217.2 32.6% 17.5%;
-    --ring: 212.7 26.8% 83.9%;
+    /* Core background - deep charcoal */
+    --background: 20 8% 6%;
+    --foreground: 60 5% 85%;
+
+    /* Cards - glassmorphism base */
+    --card: 20 8% 9%;
+    --card-foreground: 60 5% 85%;
+
+    /* Surface variants */
+    --surface-elevated: 20 8% 11%;
+    --surface-glass: 20 8% 8%;
+
+    /* Popover */
+    --popover: 20 8% 10%;
+    --popover-foreground: 60 5% 85%;
+
+    /* Primary - Claude Orange */
+    --primary: 28 85% 55%;
+    --primary-foreground: 20 8% 6%;
+
+    /* Secondary */
+    --secondary: 20 8% 14%;
+    --secondary-foreground: 60 5% 85%;
+
+    /* Muted */
+    --muted: 20 8% 14%;
+    --muted-foreground: 60 5% 50%;
+
+    /* Accent */
+    --accent: 28 85% 55%;
+    --accent-foreground: 20 8% 6%;
+
+    /* Destructive */
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 60 5% 98%;
+
+    /* Border & Input */
+    --border: 20 8% 18%;
+    --input: 20 8% 12%;
+    --ring: 28 85% 55%;
+    --radius: 0.375rem;
+
+    /* Terminal semantic colors */
+    --terminal-green: 142 70% 50%;
+    --terminal-yellow: 45 95% 55%;
+    --terminal-red: 0 72% 55%;
+    --terminal-blue: 200 90% 55%;
+    --terminal-purple: 280 85% 65%;
+    --terminal-cyan: 180 70% 50%;
+    --terminal-orange: 28 85% 55%;
+
+    /* Glow effects */
+    --glow-orange: 0 0 20px hsl(28 85% 55% / 0.4);
+    --glow-green: 0 0 15px hsl(142 70% 50% / 0.4);
+    --glow-red: 0 0 15px hsl(0 72% 55% / 0.4);
+    --glow-blue: 0 0 15px hsl(200 90% 55% / 0.4);
+    --glow-yellow: 0 0 15px hsl(45 95% 55% / 0.4);
   }
 }
 
@@ -53,7 +73,627 @@
   * {
     @apply border-border;
   }
-  body {
-    @apply bg-background text-foreground;
+
+  html {
+    color-scheme: dark;
   }
+
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-family: 'IBM Plex Mono', 'JetBrains Mono', 'SF Mono', 'Fira Code', monospace;
+    font-size: 14px;
+    line-height: 1.6;
+    letter-spacing: -0.01em;
+  }
+
+  /* Headings - monospace bold */
+  h1, h2, h3, h4, h5, h6 {
+    font-family: 'IBM Plex Mono', 'JetBrains Mono', monospace;
+    font-weight: 600;
+    letter-spacing: -0.02em;
+  }
+
+  /* Custom scrollbar - minimal terminal style */
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  ::-webkit-scrollbar-track {
+    @apply bg-transparent;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    @apply bg-border rounded-full;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    @apply bg-muted-foreground/50;
+  }
+
+  /* Code blocks */
+  pre, code, .font-mono {
+    font-family: 'JetBrains Mono', 'Fira Code', 'SF Mono', monospace;
+    font-feature-settings: "liga" 1, "calt" 1;
+  }
+
+  /* Selection */
+  ::selection {
+    background-color: hsl(28 85% 55% / 0.3);
+  }
+}
+
+@layer components {
+  /* ═══════════════════════════════════════════════════════════════
+     TERMINAL CARD - Glassmorphism with border glow
+     ═══════════════════════════════════════════════════════════════ */
+  .terminal-card {
+    @apply relative rounded-md overflow-hidden;
+    background: linear-gradient(
+      135deg,
+      hsl(var(--card)) 0%,
+      hsl(var(--surface-glass)) 100%
+    );
+    border: 1px solid hsl(var(--border));
+    box-shadow:
+      0 4px 24px -4px rgba(0, 0, 0, 0.5),
+      inset 0 1px 0 rgba(255, 255, 255, 0.03);
+  }
+
+  .terminal-card::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 1px;
+    background: linear-gradient(
+      90deg,
+      transparent 0%,
+      hsl(var(--border)) 20%,
+      hsl(var(--primary) / 0.5) 50%,
+      hsl(var(--border)) 80%,
+      transparent 100%
+    );
+  }
+
+  .terminal-card-header {
+    @apply px-4 py-3 border-b border-border/50;
+    background: hsl(var(--surface-elevated) / 0.5);
+  }
+
+  .terminal-card-title {
+    @apply text-xs font-semibold uppercase tracking-wider text-muted-foreground;
+  }
+
+  .terminal-card-content {
+    @apply p-4;
+  }
+
+  /* ═══════════════════════════════════════════════════════════════
+     TERMINAL WINDOW - macOS style header
+     ═══════════════════════════════════════════════════════════════ */
+  .terminal-window {
+    @apply terminal-card;
+  }
+
+  .terminal-window-header {
+    @apply flex items-center gap-2 px-4 py-2 border-b border-border/50;
+    background: hsl(var(--surface-elevated) / 0.7);
+  }
+
+  .terminal-window-dots {
+    @apply flex gap-1.5;
+  }
+
+  .terminal-window-dot {
+    @apply w-3 h-3 rounded-full;
+  }
+
+  .terminal-window-dot-red { @apply bg-red-500/80; }
+  .terminal-window-dot-yellow { @apply bg-yellow-500/80; }
+  .terminal-window-dot-green { @apply bg-green-500/80; }
+
+  .terminal-window-title {
+    @apply flex-1 text-center text-xs text-muted-foreground font-medium;
+  }
+
+  /* ═══════════════════════════════════════════════════════════════
+     STATUS INDICATORS - Glowing dots
+     ═══════════════════════════════════════════════════════════════ */
+  .status-indicator {
+    @apply relative w-2.5 h-2.5 rounded-full;
+  }
+
+  .status-indicator::after {
+    content: '';
+    @apply absolute inset-0 rounded-full animate-ping;
+    animation-duration: 2s;
+  }
+
+  .status-online {
+    @apply bg-green-500;
+    box-shadow: var(--glow-green);
+  }
+  .status-online::after {
+    @apply bg-green-500/50;
+  }
+
+  .status-busy {
+    @apply bg-yellow-500;
+    box-shadow: var(--glow-yellow);
+    animation: pulse 1.5s ease-in-out infinite;
+  }
+  .status-busy::after {
+    @apply bg-yellow-500/50;
+  }
+
+  .status-offline {
+    @apply bg-gray-500;
+  }
+  .status-offline::after {
+    display: none;
+  }
+
+  .status-error {
+    @apply bg-red-500;
+    box-shadow: var(--glow-red);
+  }
+  .status-error::after {
+    @apply bg-red-500/50;
+  }
+
+  /* ═══════════════════════════════════════════════════════════════
+     TERMINAL TABLE
+     ═══════════════════════════════════════════════════════════════ */
+  .terminal-table {
+    @apply w-full text-sm;
+  }
+
+  .terminal-table thead {
+    @apply border-b border-border;
+  }
+
+  .terminal-table th {
+    @apply px-4 py-3 text-left text-xs font-semibold uppercase tracking-wider text-muted-foreground;
+  }
+
+  .terminal-table tbody tr {
+    @apply border-b border-border/30 transition-colors;
+  }
+
+  .terminal-table tbody tr:hover {
+    background: hsl(var(--primary) / 0.05);
+  }
+
+  .terminal-table td {
+    @apply px-4 py-3;
+  }
+
+  /* ═══════════════════════════════════════════════════════════════
+     TERMINAL BADGES
+     ═══════════════════════════════════════════════════════════════ */
+  .terminal-badge {
+    @apply inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-xs font-medium uppercase tracking-wide;
+    border: 1px solid currentColor;
+  }
+
+  .terminal-badge-success {
+    @apply text-green-400 bg-green-500/10 border-green-500/30;
+  }
+
+  .terminal-badge-warning {
+    @apply text-yellow-400 bg-yellow-500/10 border-yellow-500/30;
+  }
+
+  .terminal-badge-error {
+    @apply text-red-400 bg-red-500/10 border-red-500/30;
+  }
+
+  .terminal-badge-info {
+    @apply text-blue-400 bg-blue-500/10 border-blue-500/30;
+  }
+
+  .terminal-badge-default {
+    @apply text-gray-400 bg-gray-500/10 border-gray-500/30;
+  }
+
+  /* ═══════════════════════════════════════════════════════════════
+     TERMINAL BUTTON
+     ═══════════════════════════════════════════════════════════════ */
+  .terminal-btn {
+    @apply inline-flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium rounded-md transition-all;
+    @apply border border-border bg-card hover:bg-secondary;
+    @apply focus:outline-none focus:ring-2 focus:ring-primary/50 focus:ring-offset-2 focus:ring-offset-background;
+  }
+
+  .terminal-btn-primary {
+    @apply bg-primary text-primary-foreground border-primary;
+    @apply hover:bg-primary/90;
+    box-shadow: var(--glow-orange);
+  }
+
+  .terminal-btn-ghost {
+    @apply border-transparent bg-transparent hover:bg-secondary;
+  }
+
+  /* ═══════════════════════════════════════════════════════════════
+     TERMINAL INPUT
+     ═══════════════════════════════════════════════════════════════ */
+  .terminal-input {
+    @apply w-full px-3 py-2 text-sm rounded-md;
+    @apply bg-input border border-border;
+    @apply focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-primary;
+    @apply placeholder:text-muted-foreground/50;
+  }
+
+  .terminal-input::placeholder {
+    font-style: italic;
+  }
+
+  /* ═══════════════════════════════════════════════════════════════
+     TERMINAL PROMPT STYLE
+     ═══════════════════════════════════════════════════════════════ */
+  .terminal-prompt {
+    @apply flex items-center gap-2;
+  }
+
+  .terminal-prompt::before {
+    content: "❯";
+    @apply text-primary font-bold;
+  }
+
+  .terminal-prompt-user::before {
+    content: "λ";
+    @apply text-cyan-400;
+  }
+
+  /* ═══════════════════════════════════════════════════════════════
+     LOG VIEWER - Terminal style
+     ═══════════════════════════════════════════════════════════════ */
+  .log-viewer {
+    @apply font-mono text-sm rounded-md overflow-hidden;
+    background: hsl(var(--background));
+    border: 1px solid hsl(var(--border));
+  }
+
+  .log-line {
+    @apply px-4 py-1 border-l-2 border-transparent transition-colors;
+  }
+
+  .log-line:hover {
+    background: hsl(var(--primary) / 0.05);
+  }
+
+  .log-line-system {
+    @apply text-muted-foreground border-l-gray-500/50;
+  }
+
+  .log-line-text {
+    @apply text-foreground;
+  }
+
+  .log-line-thinking {
+    @apply text-purple-400 italic border-l-purple-500;
+  }
+
+  .log-line-tool-use {
+    @apply text-cyan-400 border-l-cyan-500;
+  }
+
+  .log-line-tool-result {
+    @apply text-green-400 border-l-green-500;
+  }
+
+  .log-line-error {
+    @apply text-red-400 border-l-red-500;
+  }
+
+  /* ═══════════════════════════════════════════════════════════════
+     ASCII ART EMPTY STATE
+     ═══════════════════════════════════════════════════════════════ */
+  .ascii-art {
+    @apply font-mono text-xs leading-tight text-muted-foreground/50 select-none;
+    white-space: pre;
+  }
+
+  /* ═══════════════════════════════════════════════════════════════
+     SCANLINE EFFECT - Subtle CRT feel
+     ═══════════════════════════════════════════════════════════════ */
+  .scanlines {
+    position: relative;
+  }
+
+  .scanlines::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background: repeating-linear-gradient(
+      0deg,
+      transparent,
+      transparent 2px,
+      rgba(0, 0, 0, 0.03) 2px,
+      rgba(0, 0, 0, 0.03) 4px
+    );
+  }
+
+  /* ═══════════════════════════════════════════════════════════════
+     PROGRESS BAR - Terminal style
+     ═══════════════════════════════════════════════════════════════ */
+  .terminal-progress {
+    @apply h-2 rounded-full overflow-hidden;
+    background: hsl(var(--border));
+  }
+
+  .terminal-progress-bar {
+    @apply h-full rounded-full transition-all duration-300;
+  }
+
+  .terminal-progress-bar-orange {
+    @apply bg-primary;
+    box-shadow: var(--glow-orange);
+  }
+
+  .terminal-progress-bar-green {
+    background: hsl(var(--terminal-green));
+    box-shadow: var(--glow-green);
+  }
+
+  .terminal-progress-bar-striped {
+    background-image: linear-gradient(
+      45deg,
+      rgba(255,255,255,0.1) 25%,
+      transparent 25%,
+      transparent 50%,
+      rgba(255,255,255,0.1) 50%,
+      rgba(255,255,255,0.1) 75%,
+      transparent 75%,
+      transparent
+    );
+    background-size: 1rem 1rem;
+    animation: progress-stripes 1s linear infinite;
+  }
+
+  @keyframes progress-stripes {
+    from { background-position: 1rem 0; }
+    to { background-position: 0 0; }
+  }
+
+  /* ═══════════════════════════════════════════════════════════════
+     STAT CARD - Big number display
+     ═══════════════════════════════════════════════════════════════ */
+  .stat-value {
+    @apply text-4xl font-bold tracking-tight;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .stat-value-green { @apply text-green-400; }
+  .stat-value-yellow { @apply text-yellow-400; }
+  .stat-value-red { @apply text-red-400; }
+  .stat-value-blue { @apply text-blue-400; }
+  .stat-value-orange { @apply text-primary; }
+
+  /* ═══════════════════════════════════════════════════════════════
+     NAV LINK - Terminal style
+     ═══════════════════════════════════════════════════════════════ */
+  .nav-link {
+    @apply relative px-3 py-2 text-sm text-muted-foreground transition-colors;
+    @apply hover:text-foreground;
+  }
+
+  .nav-link-active {
+    @apply text-primary;
+  }
+
+  .nav-link-active::after {
+    content: '';
+    @apply absolute bottom-0 left-3 right-3 h-0.5 rounded-full bg-primary;
+    box-shadow: var(--glow-orange);
+  }
+
+  /* ═══════════════════════════════════════════════════════════════
+     KEYBOARD SHORTCUT HINT
+     ═══════════════════════════════════════════════════════════════ */
+  .kbd {
+    @apply inline-flex items-center justify-center px-1.5 py-0.5 text-xs rounded;
+    @apply bg-secondary border border-border text-muted-foreground;
+    font-family: inherit;
+    min-width: 1.5rem;
+  }
+
+  /* ═══════════════════════════════════════════════════════════════
+     TOOLTIP
+     ═══════════════════════════════════════════════════════════════ */
+  .terminal-tooltip {
+    @apply absolute z-50 px-2 py-1 text-xs rounded;
+    @apply bg-popover border border-border text-popover-foreground;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  }
+
+  /* ═══════════════════════════════════════════════════════════════
+     DIVIDER
+     ═══════════════════════════════════════════════════════════════ */
+  .terminal-divider {
+    @apply flex items-center gap-4 text-xs text-muted-foreground uppercase tracking-wider;
+  }
+
+  .terminal-divider::before,
+  .terminal-divider::after {
+    content: '';
+    @apply flex-1 h-px bg-border;
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   ANIMATIONS
+   ═══════════════════════════════════════════════════════════════ */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: translateX(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes pulse-glow {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.6;
+  }
+}
+
+@keyframes typing {
+  from { width: 0; }
+  to { width: 100%; }
+}
+
+@keyframes blink {
+  0%, 50% { opacity: 1; }
+  51%, 100% { opacity: 0; }
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.3s ease-out forwards;
+}
+
+.animate-slide-in {
+  animation: slideIn 0.3s ease-out forwards;
+}
+
+.animate-glow {
+  animation: pulse-glow 2s ease-in-out infinite;
+}
+
+/* Typing cursor */
+.typing-cursor::after {
+  content: "▋";
+  @apply text-primary;
+  animation: blink 1s step-end infinite;
+}
+
+/* Staggered animation delays */
+.stagger-1 { animation-delay: 50ms; }
+.stagger-2 { animation-delay: 100ms; }
+.stagger-3 { animation-delay: 150ms; }
+.stagger-4 { animation-delay: 200ms; }
+.stagger-5 { animation-delay: 250ms; }
+
+/* ═══════════════════════════════════════════════════════════════
+   CODE SYNTAX HIGHLIGHTING - Terminal colors
+   ═══════════════════════════════════════════════════════════════ */
+.hljs {
+  background: transparent !important;
+  color: hsl(var(--foreground));
+}
+
+.hljs-comment,
+.hljs-quote {
+  color: hsl(var(--muted-foreground));
+  font-style: italic;
+}
+
+.hljs-keyword,
+.hljs-selector-tag,
+.hljs-built_in {
+  color: hsl(var(--terminal-red));
+}
+
+.hljs-string,
+.hljs-attr {
+  color: hsl(var(--terminal-green));
+}
+
+.hljs-number,
+.hljs-literal {
+  color: hsl(var(--terminal-yellow));
+}
+
+.hljs-function,
+.hljs-title {
+  color: hsl(var(--terminal-blue));
+}
+
+.hljs-variable {
+  color: hsl(var(--terminal-orange));
+}
+
+.hljs-name,
+.hljs-tag {
+  color: hsl(var(--terminal-cyan));
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   MARKDOWN CONTENT
+   ═══════════════════════════════════════════════════════════════ */
+.markdown-content {
+  @apply text-sm leading-relaxed;
+}
+
+.markdown-content p {
+  @apply mb-4;
+}
+
+.markdown-content pre {
+  @apply my-4 p-4 rounded-md overflow-x-auto;
+  background: hsl(var(--surface-elevated));
+  border: 1px solid hsl(var(--border));
+}
+
+.markdown-content code:not(pre code) {
+  @apply px-1.5 py-0.5 rounded text-sm;
+  background: hsl(var(--secondary));
+  color: hsl(var(--terminal-orange));
+}
+
+.markdown-content ul,
+.markdown-content ol {
+  @apply mb-4 pl-6;
+}
+
+.markdown-content li {
+  @apply mb-1;
+}
+
+.markdown-content h1,
+.markdown-content h2,
+.markdown-content h3 {
+  @apply font-bold mt-6 mb-3;
+}
+
+.markdown-content h1 { @apply text-xl; }
+.markdown-content h2 { @apply text-lg; }
+.markdown-content h3 { @apply text-base; }
+
+.markdown-content blockquote {
+  @apply pl-4 border-l-2 border-primary italic text-muted-foreground;
+}
+
+/* Log markdown - compact */
+.log-markdown .markdown-content {
+  @apply text-sm;
+}
+
+.log-markdown .markdown-content p {
+  @apply mb-0;
+}
+
+.log-markdown .markdown-content pre {
+  @apply my-2 p-2;
 }

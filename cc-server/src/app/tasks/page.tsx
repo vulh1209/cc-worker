@@ -1,7 +1,11 @@
 import Link from 'next/link';
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import {
+  TerminalCard,
+  StatusBadge,
+  EmptyState,
+  TerminalButton,
+  ProgressBar,
+} from '@/components/terminal-ui';
 import { formatRelativeTime, formatDuration, truncate } from '@/lib/utils';
 import prisma from '@/lib/prisma';
 
@@ -19,85 +23,223 @@ async function getTasks() {
   });
 }
 
-export default async function TasksPage() {
-  const tasks = await getTasks();
+async function getTaskStats() {
+  const [running, pending, completed, failed] = await Promise.all([
+    prisma.task.count({ where: { status: 'RUNNING' } }),
+    prisma.task.count({ where: { status: 'PENDING' } }),
+    prisma.task.count({ where: { status: 'COMPLETED' } }),
+    prisma.task.count({ where: { status: 'FAILED' } }),
+  ]);
+  return { running, pending, completed, failed, total: running + pending + completed + failed };
+}
 
-  const statusColors: Record<string, 'default' | 'secondary' | 'destructive' | 'success' | 'warning'> = {
-    PENDING: 'secondary',
-    RUNNING: 'warning',
-    COMPLETED: 'success',
-    FAILED: 'destructive',
-    CANCELLED: 'secondary',
-  };
+export default async function TasksPage() {
+  const [tasks, stats] = await Promise.all([getTasks(), getTaskStats()]);
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 animate-fade-in">
+      {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold">Tasks</h1>
-          <p className="text-muted-foreground">
-            {tasks.length} tasks total
+          <h1 className="text-2xl font-bold text-foreground flex items-center gap-2">
+            <span className="text-primary">▤</span>
+            Tasks
+          </h1>
+          <p className="text-sm text-muted-foreground mt-1">
+            <span className="terminal-prompt">
+              {stats.total} total · {stats.running} running · {stats.pending} queued
+            </span>
           </p>
         </div>
         <Link href="/tasks/new">
-          <Button>Create Task</Button>
+          <TerminalButton variant="primary">
+            <span className="text-xs mr-1">+</span>
+            new task
+          </TerminalButton>
         </Link>
       </div>
 
-      {tasks.length === 0 ? (
-        <div className="text-center py-12">
-          <h3 className="text-lg font-medium">No tasks yet</h3>
-          <p className="text-muted-foreground mt-1">
-            Create a task to start running Claude on your workers.
-          </p>
-          <Link href="/tasks/new" className="mt-4 inline-block">
-            <Button>Create Your First Task</Button>
-          </Link>
+      {/* Status Filter Bar */}
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <StatusFilterTab count={stats.total} label="all" active />
+          <StatusFilterTab count={stats.running} label="running" color="yellow" />
+          <StatusFilterTab count={stats.pending} label="pending" color="gray" />
+          <StatusFilterTab count={stats.completed} label="completed" color="green" />
+          <StatusFilterTab count={stats.failed} label="failed" color="red" />
         </div>
+
+        {/* Quick Actions */}
+        <div className="flex items-center gap-2">
+          <TerminalButton variant="ghost" size="sm">
+            ↻ refresh
+          </TerminalButton>
+        </div>
+      </div>
+
+      {/* Tasks Table */}
+      {tasks.length === 0 ? (
+        <TerminalCard>
+          <EmptyState
+            type="tasks"
+            title="No tasks created"
+            description="Create a task to start running Claude on your distributed workers."
+            action={
+              <Link href="/tasks/new">
+                <TerminalButton variant="primary">
+                  create your first task
+                </TerminalButton>
+              </Link>
+            }
+          />
+        </TerminalCard>
       ) : (
-        <Card>
-          <CardHeader>
-            <CardTitle>All Tasks</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="divide-y">
-              {tasks.map((task) => (
-                <Link
-                  key={task.id}
-                  href={`/tasks/${task.id}`}
-                  className="block py-4 hover:bg-accent/50 -mx-4 px-4 transition-colors"
-                >
-                  <div className="flex items-start justify-between gap-4">
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 mb-1">
-                        <Badge variant={statusColors[task.status]}>
-                          {task.status}
-                        </Badge>
-                        <span className="text-xs text-muted-foreground">
-                          {task.id.substring(0, 8)}
-                        </span>
-                      </div>
-                      <p className="font-medium">
-                        {truncate(task.prompt, 100)}
-                      </p>
-                      <div className="flex items-center gap-4 mt-1 text-sm text-muted-foreground">
-                        <span>
-                          {task.worker ? task.worker.name : 'Unassigned'}
-                        </span>
-                        <span>{formatRelativeTime(task.createdAt)}</span>
-                        {task.duration && (
-                          <span>{formatDuration(task.duration)}</span>
-                        )}
-                      </div>
-                    </div>
-                    <span className="text-muted-foreground">&rarr;</span>
-                  </div>
-                </Link>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
+        <TerminalCard noPadding>
+          <div className="overflow-x-auto">
+            <table className="terminal-table">
+              <thead>
+                <tr>
+                  <th className="w-28">Status</th>
+                  <th className="w-20">ID</th>
+                  <th>Prompt</th>
+                  <th className="w-32">Worker</th>
+                  <th className="w-24">Duration</th>
+                  <th className="w-24">Created</th>
+                  <th className="w-12"></th>
+                </tr>
+              </thead>
+              <tbody>
+                {tasks.map((task, index) => (
+                  <TaskRow key={task.id} task={task} index={index} />
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </TerminalCard>
       )}
     </div>
+  );
+}
+
+function StatusFilterTab({
+  count,
+  label,
+  color,
+  active = false,
+}: {
+  count: number;
+  label: string;
+  color?: 'green' | 'yellow' | 'red' | 'gray';
+  active?: boolean;
+}) {
+  const colorClasses = {
+    green: 'text-green-400',
+    yellow: 'text-yellow-400',
+    red: 'text-red-400',
+    gray: 'text-gray-400',
+  };
+
+  const dotClasses = {
+    green: 'status-online',
+    yellow: 'status-busy',
+    red: 'status-error',
+    gray: 'status-offline',
+  };
+
+  return (
+    <button
+      className={`
+        px-3 py-1.5 text-xs rounded border transition-colors
+        ${active
+          ? 'bg-primary/10 border-primary/30 text-primary'
+          : 'bg-secondary/50 border-border/50 text-muted-foreground hover:border-border hover:text-foreground'
+        }
+      `}
+    >
+      <span className="flex items-center gap-1.5">
+        {color && (
+          <span className={`status-indicator w-1.5 h-1.5 ${dotClasses[color]}`} />
+        )}
+        <span>{label}</span>
+        <span className={color ? colorClasses[color] : ''}>{count}</span>
+      </span>
+    </button>
+  );
+}
+
+function TaskRow({
+  task,
+  index,
+}: {
+  task: {
+    id: string;
+    prompt: string;
+    status: string;
+    duration: number | null;
+    createdAt: Date;
+    worker: { id: string; name: string } | null;
+  };
+  index: number;
+}) {
+  const isRunning = task.status === 'RUNNING';
+
+  return (
+    <tr
+      className="animate-slide-in cursor-pointer"
+      style={{ animationDelay: `${index * 20}ms` }}
+    >
+      <td>
+        <div className="flex items-center gap-2">
+          <StatusBadge status={task.status as any} size="sm" />
+          {isRunning && (
+            <div className="w-16">
+              <ProgressBar value={50} color="yellow" striped size="sm" />
+            </div>
+          )}
+        </div>
+      </td>
+      <td>
+        <Link href={`/tasks/${task.id}`} className="font-mono text-xs text-muted-foreground hover:text-primary">
+          {task.id.substring(0, 8)}
+        </Link>
+      </td>
+      <td>
+        <Link href={`/tasks/${task.id}`} className="block hover:text-primary transition-colors">
+          <p className="text-sm truncate max-w-md">
+            {truncate(task.prompt, 60)}
+          </p>
+        </Link>
+      </td>
+      <td>
+        {task.worker ? (
+          <Link
+            href={`/workers/${task.worker.id}`}
+            className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-primary"
+          >
+            <span className="status-indicator status-online w-1.5 h-1.5" />
+            {task.worker.name}
+          </Link>
+        ) : (
+          <span className="text-xs text-muted-foreground italic">unassigned</span>
+        )}
+      </td>
+      <td>
+        <span className="text-sm text-muted-foreground tabular-nums">
+          {task.duration ? formatDuration(task.duration) : '—'}
+        </span>
+      </td>
+      <td>
+        <span className="text-sm text-muted-foreground">
+          {formatRelativeTime(task.createdAt)}
+        </span>
+      </td>
+      <td>
+        <Link href={`/tasks/${task.id}`}>
+          <TerminalButton variant="ghost" size="sm">
+            →
+          </TerminalButton>
+        </Link>
+      </td>
+    </tr>
   );
 }

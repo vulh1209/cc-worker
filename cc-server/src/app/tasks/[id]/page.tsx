@@ -1,9 +1,14 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
+import {
+  TerminalCard,
+  TerminalWindow,
+  StatusBadge,
+  TerminalButton,
+  ProgressBar,
+} from '@/components/terminal-ui';
 import { LiveLogViewer } from '@/components/LiveLogViewer';
+import { MarkdownRenderer } from '@/components/MarkdownRenderer';
 import { formatRelativeTime, formatDuration } from '@/lib/utils';
 import prisma from '@/lib/prisma';
 
@@ -35,142 +40,208 @@ export default async function TaskDetailPage({ params }: PageProps) {
     notFound();
   }
 
-  const statusColors: Record<string, 'default' | 'secondary' | 'destructive' | 'success' | 'warning'> = {
-    PENDING: 'secondary',
-    RUNNING: 'warning',
-    COMPLETED: 'success',
-    FAILED: 'destructive',
-    CANCELLED: 'secondary',
-  };
-
   const isRunning = task.status === 'RUNNING';
+  const isPending = task.status === 'PENDING';
+  const isCompleted = task.status === 'COMPLETED';
+  const isFailed = task.status === 'FAILED';
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 animate-fade-in">
+      {/* Header */}
       <div className="flex items-center justify-between">
         <div>
           <div className="flex items-center gap-3">
-            <h1 className="text-2xl font-bold">Task</h1>
-            <Badge variant={statusColors[task.status]}>{task.status}</Badge>
+            <h1 className="text-2xl font-bold text-foreground flex items-center gap-2">
+              <span className="text-primary">▤</span>
+              Task
+            </h1>
+            <StatusBadge status={task.status as any} />
           </div>
-          <p className="text-muted-foreground font-mono text-sm">{task.id}</p>
+          <p className="text-sm text-muted-foreground mt-1 font-mono">
+            {task.id}
+          </p>
         </div>
         <div className="flex gap-2">
           {isRunning && <CancelButton taskId={task.id} />}
           <Link href="/tasks">
-            <Button variant="outline">Back to Tasks</Button>
+            <TerminalButton variant="ghost">
+              ← back to tasks
+            </TerminalButton>
           </Link>
         </div>
       </div>
 
+      {/* Progress Bar for Running Tasks */}
+      {isRunning && (
+        <TerminalCard>
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-xs text-yellow-400 uppercase tracking-wider">
+              Executing...
+            </span>
+            <span className="text-xs text-muted-foreground animate-pulse">
+              ● processing
+            </span>
+          </div>
+          <ProgressBar value={50} color="yellow" striped />
+        </TerminalCard>
+      )}
+
+      {/* Main Grid */}
       <div className="grid gap-6 lg:grid-cols-3">
-        {/* Task Info */}
-        <Card className="lg:col-span-1">
-          <CardHeader>
-            <CardTitle>Details</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div>
-              <label className="text-sm font-medium text-muted-foreground">
-                Worker
-              </label>
-              <p>
-                {task.worker ? (
-                  <Link
-                    href={`/workers/${task.worker.id}`}
-                    className="text-blue-600 hover:underline"
-                  >
-                    {task.worker.name}
-                  </Link>
-                ) : (
-                  'Unassigned'
-                )}
-              </p>
+        {/* Task Details - Left Column */}
+        <div className="space-y-6">
+          <TerminalCard title="Details">
+            <div className="space-y-4">
+              {/* Worker */}
+              <div>
+                <label className="text-xs uppercase tracking-wider text-muted-foreground">
+                  Worker
+                </label>
+                <p className="mt-1">
+                  {task.worker ? (
+                    <Link
+                      href={`/workers/${task.worker.id}`}
+                      className="flex items-center gap-2 text-foreground hover:text-primary transition-colors"
+                    >
+                      <span
+                        className={`status-indicator ${
+                          task.worker.status === 'ONLINE'
+                            ? 'status-online'
+                            : task.worker.status === 'BUSY'
+                            ? 'status-busy'
+                            : 'status-offline'
+                        }`}
+                      />
+                      {task.worker.name}
+                    </Link>
+                  ) : (
+                    <span className="text-muted-foreground italic">unassigned</span>
+                  )}
+                </p>
+              </div>
+
+              {/* Created */}
+              <div>
+                <label className="text-xs uppercase tracking-wider text-muted-foreground">
+                  Created
+                </label>
+                <p className="mt-1 text-foreground">
+                  {formatRelativeTime(task.createdAt)}
+                </p>
+              </div>
+
+              {/* Started */}
+              {task.startedAt && (
+                <div>
+                  <label className="text-xs uppercase tracking-wider text-muted-foreground">
+                    Started
+                  </label>
+                  <p className="mt-1 text-foreground">
+                    {formatRelativeTime(task.startedAt)}
+                  </p>
+                </div>
+              )}
+
+              {/* Completed */}
+              {task.completedAt && (
+                <div>
+                  <label className="text-xs uppercase tracking-wider text-muted-foreground">
+                    Completed
+                  </label>
+                  <p className="mt-1 text-foreground">
+                    {formatRelativeTime(task.completedAt)}
+                  </p>
+                </div>
+              )}
+
+              {/* Duration */}
+              {task.duration && (
+                <div>
+                  <label className="text-xs uppercase tracking-wider text-muted-foreground">
+                    Duration
+                  </label>
+                  <p className="mt-1 text-foreground tabular-nums">
+                    {formatDuration(task.duration)}
+                  </p>
+                </div>
+              )}
+
+              {/* Status Indicator */}
+              <div className="pt-4 border-t border-border/30">
+                <div className="flex items-center gap-2">
+                  {isCompleted && (
+                    <>
+                      <span className="text-green-400">✓</span>
+                      <span className="text-green-400 text-sm">Task completed successfully</span>
+                    </>
+                  )}
+                  {isFailed && (
+                    <>
+                      <span className="text-red-400">✗</span>
+                      <span className="text-red-400 text-sm">Task failed</span>
+                    </>
+                  )}
+                  {isRunning && (
+                    <>
+                      <span className="text-yellow-400 animate-pulse">●</span>
+                      <span className="text-yellow-400 text-sm">Task is running</span>
+                    </>
+                  )}
+                  {isPending && (
+                    <>
+                      <span className="text-gray-400">○</span>
+                      <span className="text-gray-400 text-sm">Waiting in queue</span>
+                    </>
+                  )}
+                </div>
+              </div>
             </div>
+          </TerminalCard>
 
-            <div>
-              <label className="text-sm font-medium text-muted-foreground">
-                Created
-              </label>
-              <p>{formatRelativeTime(task.createdAt)}</p>
-            </div>
-
-            {task.startedAt && (
-              <div>
-                <label className="text-sm font-medium text-muted-foreground">
-                  Started
-                </label>
-                <p>{formatRelativeTime(task.startedAt)}</p>
+          {/* Error Message */}
+          {task.errorMessage && (
+            <TerminalCard className="border-red-500/30">
+              <div className="flex items-start gap-2">
+                <span className="text-red-400">❌</span>
+                <div>
+                  <p className="text-xs uppercase tracking-wider text-red-400 mb-1">
+                    Error
+                  </p>
+                  <p className="text-sm text-red-400">{task.errorMessage}</p>
+                </div>
               </div>
-            )}
+            </TerminalCard>
+          )}
+        </div>
 
-            {task.completedAt && (
-              <div>
-                <label className="text-sm font-medium text-muted-foreground">
-                  Completed
-                </label>
-                <p>{formatRelativeTime(task.completedAt)}</p>
-              </div>
-            )}
-
-            {task.duration && (
-              <div>
-                <label className="text-sm font-medium text-muted-foreground">
-                  Duration
-                </label>
-                <p>{formatDuration(task.duration)}</p>
-              </div>
-            )}
-
-            {task.errorMessage && (
-              <div>
-                <label className="text-sm font-medium text-red-600">
-                  Error
-                </label>
-                <p className="text-red-600">{task.errorMessage}</p>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
-        {/* Prompt & Logs */}
+        {/* Content - Right Columns */}
         <div className="lg:col-span-2 space-y-6">
-          <Card>
-            <CardHeader>
-              <CardTitle>Prompt</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <pre className="bg-muted p-4 rounded-lg overflow-x-auto whitespace-pre-wrap text-sm">
-                {task.prompt}
-              </pre>
-            </CardContent>
-          </Card>
+          {/* Prompt */}
+          <TerminalWindow title="prompt">
+            <pre className="text-sm text-foreground whitespace-pre-wrap break-words">
+              {task.prompt}
+            </pre>
+          </TerminalWindow>
 
+          {/* Result */}
           {task.result && (
-            <Card>
-              <CardHeader>
-                <CardTitle>Result</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <pre className="bg-muted p-4 rounded-lg overflow-x-auto whitespace-pre-wrap text-sm">
-                  {task.result}
-                </pre>
-              </CardContent>
-            </Card>
+            <TerminalWindow title="result">
+              <div className="markdown-content">
+                <MarkdownRenderer content={task.result} />
+              </div>
+            </TerminalWindow>
           )}
 
-          <Card>
-            <CardHeader>
-              <CardTitle>Execution Logs</CardTitle>
-            </CardHeader>
-            <CardContent>
+          {/* Logs */}
+          <TerminalCard title="Execution Logs" noPadding>
+            <div className="p-4">
               <LiveLogViewer
                 taskId={task.id}
                 initialLogs={task.logs}
                 isRunning={isRunning}
               />
-            </CardContent>
-          </Card>
+            </div>
+          </TerminalCard>
         </div>
       </div>
     </div>
@@ -187,9 +258,9 @@ function CancelButton({ taskId }: { taskId: string }) {
         });
       }}
     >
-      <Button type="submit" variant="destructive">
-        Cancel Task
-      </Button>
+      <TerminalButton type="submit" variant="destructive">
+        ✗ cancel task
+      </TerminalButton>
     </form>
   );
 }

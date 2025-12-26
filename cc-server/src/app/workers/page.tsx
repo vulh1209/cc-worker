@@ -1,7 +1,13 @@
 import Link from 'next/link';
-import { Button } from '@/components/ui/button';
-import { WorkerCard } from '@/components/WorkerCard';
+import {
+  TerminalCard,
+  StatusBadge,
+  EmptyState,
+  TerminalButton,
+  ProgressBar,
+} from '@/components/terminal-ui';
 import prisma from '@/lib/prisma';
+import { formatRelativeTime } from '@/lib/utils';
 
 export const dynamic = 'force-dynamic';
 
@@ -24,39 +30,202 @@ export default async function WorkersPage() {
 
   const onlineCount = workers.filter((w) => w.status === 'ONLINE').length;
   const busyCount = workers.filter((w) => w.status === 'BUSY').length;
+  const offlineCount = workers.filter((w) => w.status === 'OFFLINE').length;
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 animate-fade-in">
+      {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold">Workers</h1>
-          <p className="text-muted-foreground">
-            {workers.length} workers total &bull; {onlineCount} online &bull;{' '}
-            {busyCount} busy
+          <h1 className="text-2xl font-bold text-foreground flex items-center gap-2">
+            <span className="text-primary">⬡</span>
+            Workers
+          </h1>
+          <p className="text-sm text-muted-foreground mt-1">
+            <span className="terminal-prompt">
+              {workers.length} registered · {onlineCount} online · {busyCount} busy
+            </span>
           </p>
         </div>
         <Link href="/workers/new">
-          <Button>Add Worker</Button>
+          <TerminalButton variant="primary">
+            <span className="text-xs mr-1">+</span>
+            add worker
+          </TerminalButton>
         </Link>
       </div>
 
+      {/* Status Filter Tabs */}
+      <div className="flex items-center gap-2">
+        <StatusTab count={workers.length} label="all" active />
+        <StatusTab count={onlineCount} label="online" color="green" />
+        <StatusTab count={busyCount} label="busy" color="yellow" />
+        <StatusTab count={offlineCount} label="offline" color="gray" />
+      </div>
+
+      {/* Workers Grid */}
       {workers.length === 0 ? (
-        <div className="text-center py-12">
-          <h3 className="text-lg font-medium">No workers yet</h3>
-          <p className="text-muted-foreground mt-1">
-            Add a worker to get started with task distribution.
-          </p>
-          <Link href="/workers/new" className="mt-4 inline-block">
-            <Button>Add Your First Worker</Button>
-          </Link>
-        </div>
+        <TerminalCard>
+          <EmptyState
+            type="workers"
+            title="No workers registered"
+            description="Add a worker to start distributing Claude tasks across your infrastructure."
+            action={
+              <Link href="/workers/new">
+                <TerminalButton variant="primary">
+                  add your first worker
+                </TerminalButton>
+              </Link>
+            }
+          />
+        </TerminalCard>
       ) : (
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-          {workers.map((worker) => (
-            <WorkerCard key={worker.id} worker={worker} />
+          {workers.map((worker, index) => (
+            <WorkerGridCard
+              key={worker.id}
+              worker={worker}
+              index={index}
+            />
           ))}
         </div>
       )}
     </div>
+  );
+}
+
+function StatusTab({
+  count,
+  label,
+  color,
+  active = false,
+}: {
+  count: number;
+  label: string;
+  color?: 'green' | 'yellow' | 'gray';
+  active?: boolean;
+}) {
+  const colorClasses = {
+    green: 'text-green-400',
+    yellow: 'text-yellow-400',
+    gray: 'text-gray-400',
+  };
+
+  return (
+    <button
+      className={`
+        px-3 py-1.5 text-xs rounded border transition-colors
+        ${active
+          ? 'bg-primary/10 border-primary/30 text-primary'
+          : 'bg-secondary/50 border-border/50 text-muted-foreground hover:border-border hover:text-foreground'
+        }
+      `}
+    >
+      <span className="flex items-center gap-1.5">
+        {color && (
+          <span className={`status-indicator w-1.5 h-1.5 ${
+            color === 'green' ? 'status-online' :
+            color === 'yellow' ? 'status-busy' :
+            'status-offline'
+          }`} />
+        )}
+        <span>{label}</span>
+        <span className={color ? colorClasses[color] : ''}>{count}</span>
+      </span>
+    </button>
+  );
+}
+
+function WorkerGridCard({
+  worker,
+  index,
+}: {
+  worker: {
+    id: string;
+    name: string;
+    status: string;
+    os: string | null;
+    hostname: string | null;
+    lastSeen: Date | null;
+    _count?: { tasks: number };
+  };
+  index: number;
+}) {
+  const isOnline = worker.status === 'ONLINE';
+  const isBusy = worker.status === 'BUSY';
+
+  return (
+    <Link
+      href={`/workers/${worker.id}`}
+      className="block animate-slide-in"
+      style={{ animationDelay: `${index * 50}ms` }}
+    >
+      <TerminalCard className="h-full hover:border-primary/30 transition-all group">
+        {/* Header */}
+        <div className="flex items-start justify-between mb-4">
+          <div className="flex items-center gap-3">
+            <span
+              className={`status-indicator ${
+                isOnline ? 'status-online' :
+                isBusy ? 'status-busy' :
+                'status-offline'
+              }`}
+            />
+            <div>
+              <h3 className="font-semibold text-foreground group-hover:text-primary transition-colors">
+                {worker.name}
+              </h3>
+              <p className="text-xs text-muted-foreground">
+                {worker.hostname || 'unknown host'}
+              </p>
+            </div>
+          </div>
+          <StatusBadge status={worker.status as any} size="sm" showDot={false} />
+        </div>
+
+        {/* Info Grid */}
+        <div className="space-y-2 text-sm">
+          <div className="flex items-center justify-between">
+            <span className="text-muted-foreground">OS</span>
+            <span className="text-foreground">{worker.os || 'unknown'}</span>
+          </div>
+          <div className="flex items-center justify-between">
+            <span className="text-muted-foreground">Tasks</span>
+            <span className="text-foreground tabular-nums">{worker._count?.tasks || 0}</span>
+          </div>
+          <div className="flex items-center justify-between">
+            <span className="text-muted-foreground">Last seen</span>
+            <span className="text-foreground">
+              {formatRelativeTime(worker.lastSeen)}
+            </span>
+          </div>
+        </div>
+
+        {/* Status Bar */}
+        {isBusy && (
+          <div className="mt-4 pt-4 border-t border-border/30">
+            <div className="flex items-center justify-between text-xs mb-2">
+              <span className="text-yellow-400">executing task...</span>
+              <span className="text-muted-foreground animate-pulse">●</span>
+            </div>
+            <ProgressBar value={50} color="yellow" striped size="sm" />
+          </div>
+        )}
+
+        {/* Actions */}
+        <div className="mt-4 pt-4 border-t border-border/30 flex gap-2">
+          <TerminalButton variant="ghost" size="sm" className="flex-1">
+            view details
+          </TerminalButton>
+          {isOnline && (
+            <Link href={`/tasks/new?workerId=${worker.id}`} className="flex-1">
+              <TerminalButton variant="primary" size="sm" className="w-full">
+                send task
+              </TerminalButton>
+            </Link>
+          )}
+        </div>
+      </TerminalCard>
+    </Link>
   );
 }

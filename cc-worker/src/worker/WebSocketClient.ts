@@ -44,6 +44,7 @@ export class WebSocketClient extends EventEmitter {
       logger.info(`Connecting to server: ${this.config.serverUrl}`);
 
       this.socket = io(this.config.serverUrl, {
+        path: '/api/ws',
         transports: ['websocket'],
         reconnection: true,
         reconnectionAttempts: Infinity,

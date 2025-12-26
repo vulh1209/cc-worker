@@ -1,15 +1,15 @@
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
+import {
+  TerminalCard,
+  StatCard,
+  StatusBadge,
+  ProgressBar,
+  Divider,
+} from '@/components/terminal-ui';
 import prisma from '@/lib/prisma';
 
 export const dynamic = 'force-dynamic';
 
 async function getAnalytics() {
-  const days = 30;
-  const startDate = new Date();
-  startDate.setDate(startDate.getDate() - days);
-
-  // Get task stats
   const [
     totalTasks,
     completedTasks,
@@ -24,20 +24,17 @@ async function getAnalytics() {
     prisma.task.count({ where: { status: 'PENDING' } }),
   ]);
 
-  // Get worker stats
   const [totalWorkers, onlineWorkers, busyWorkers] = await Promise.all([
     prisma.worker.count(),
     prisma.worker.count({ where: { status: 'ONLINE' } }),
     prisma.worker.count({ where: { status: 'BUSY' } }),
   ]);
 
-  // Get average task duration
   const avgDurationResult = await prisma.task.aggregate({
     _avg: { duration: true },
     where: { status: 'COMPLETED', duration: { not: null } },
   });
 
-  // Get recent tasks with duration
   const recentCompletedTasks = await prisma.task.findMany({
     where: { status: 'COMPLETED', duration: { not: null } },
     orderBy: { completedAt: 'desc' },
@@ -51,7 +48,6 @@ async function getAnalytics() {
     },
   });
 
-  // Get top workers by completed tasks
   const topWorkers = await prisma.worker.findMany({
     select: {
       id: true,
@@ -93,7 +89,7 @@ async function getAnalytics() {
 }
 
 function formatDuration(ms: number | null): string {
-  if (!ms) return '-';
+  if (!ms) return '—';
   if (ms < 1000) return `${ms}ms`;
   if (ms < 60000) return `${(ms / 1000).toFixed(1)}s`;
   return `${Math.floor(ms / 60000)}m ${Math.floor((ms % 60000) / 1000)}s`;
@@ -103,197 +99,242 @@ export default async function AnalyticsPage() {
   const data = await getAnalytics();
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 animate-fade-in">
+      {/* Header */}
       <div>
-        <h1 className="text-3xl font-bold">Analytics</h1>
-        <p className="text-muted-foreground">
-          Performance metrics and insights
+        <h1 className="text-2xl font-bold text-foreground flex items-center gap-2">
+          <span className="text-primary">◭</span>
+          Analytics
+        </h1>
+        <p className="text-sm text-muted-foreground mt-1">
+          <span className="terminal-prompt">performance metrics and insights</span>
         </p>
       </div>
 
       {/* Overview Stats */}
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium">Success Rate</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-3xl font-bold text-green-600">
-              {data.overview.successRate}%
-            </div>
-            <p className="text-xs text-muted-foreground">
-              {data.overview.completedTasks} completed / {data.overview.failedTasks} failed
-            </p>
-          </CardContent>
-        </Card>
+        <StatCard
+          title="Success Rate"
+          value={`${data.overview.successRate}%`}
+          subtitle={`${data.overview.completedTasks} completed / ${data.overview.failedTasks} failed`}
+          color={data.overview.successRate >= 90 ? 'green' : data.overview.successRate >= 70 ? 'yellow' : 'red'}
+          icon={<span className="text-lg">✓</span>}
+        />
 
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium">Avg Duration</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-3xl font-bold">
-              {formatDuration(data.overview.avgDuration)}
-            </div>
-            <p className="text-xs text-muted-foreground">
-              Per completed task
-            </p>
-          </CardContent>
-        </Card>
+        <StatCard
+          title="Avg Duration"
+          value={formatDuration(data.overview.avgDuration)}
+          subtitle="per completed task"
+          color="blue"
+          icon={<span className="text-lg">⏱</span>}
+        />
 
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium">Total Tasks</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-3xl font-bold">{data.overview.totalTasks}</div>
-            <p className="text-xs text-muted-foreground">
-              {data.overview.runningTasks} running, {data.overview.pendingTasks} pending
-            </p>
-          </CardContent>
-        </Card>
+        <StatCard
+          title="Total Tasks"
+          value={data.overview.totalTasks}
+          subtitle={`${data.overview.runningTasks} running, ${data.overview.pendingTasks} pending`}
+          color="orange"
+          icon={<span className="text-lg">▤</span>}
+        />
 
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium">Workers</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-3xl font-bold">{data.workers.total}</div>
-            <p className="text-xs text-muted-foreground">
-              {data.workers.online} online, {data.workers.busy} busy
-            </p>
-          </CardContent>
-        </Card>
-      </div>
-
-      <div className="grid gap-6 lg:grid-cols-2">
-        {/* Top Workers */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Top Workers</CardTitle>
-            <CardDescription>By number of tasks completed</CardDescription>
-          </CardHeader>
-          <CardContent>
-            {data.topWorkers.length === 0 ? (
-              <p className="text-muted-foreground text-center py-4">
-                No workers yet
-              </p>
-            ) : (
-              <div className="space-y-4">
-                {data.topWorkers.map((worker, index) => (
-                  <div
-                    key={worker.id}
-                    className="flex items-center justify-between"
-                  >
-                    <div className="flex items-center gap-3">
-                      <span className="text-lg font-bold text-muted-foreground">
-                        #{index + 1}
-                      </span>
-                      <div>
-                        <p className="font-medium">{worker.name}</p>
-                        <Badge
-                          variant={
-                            worker.status === 'ONLINE'
-                              ? 'success'
-                              : worker.status === 'BUSY'
-                                ? 'warning'
-                                : 'secondary'
-                          }
-                        >
-                          {worker.status}
-                        </Badge>
-                      </div>
-                    </div>
-                    <div className="text-right">
-                      <p className="text-2xl font-bold">{worker._count.tasks}</p>
-                      <p className="text-xs text-muted-foreground">tasks</p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
-        {/* Recent Completed Tasks */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Recent Completed Tasks</CardTitle>
-            <CardDescription>Last 10 completed tasks</CardDescription>
-          </CardHeader>
-          <CardContent>
-            {data.recentCompletedTasks.length === 0 ? (
-              <p className="text-muted-foreground text-center py-4">
-                No completed tasks yet
-              </p>
-            ) : (
-              <div className="space-y-3">
-                {data.recentCompletedTasks.map((task) => (
-                  <div
-                    key={task.id}
-                    className="flex items-center justify-between text-sm"
-                  >
-                    <div className="flex-1 min-w-0">
-                      <p className="truncate">
-                        {task.prompt.substring(0, 40)}...
-                      </p>
-                      <p className="text-xs text-muted-foreground">
-                        {task.worker?.name || 'Unknown'}
-                      </p>
-                    </div>
-                    <div className="text-right">
-                      <p className="font-medium">
-                        {formatDuration(task.duration)}
-                      </p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </CardContent>
-        </Card>
+        <StatCard
+          title="Workers"
+          value={data.workers.total}
+          subtitle={`${data.workers.online} online, ${data.workers.busy} busy`}
+          color="blue"
+          icon={<span className="text-lg">⬡</span>}
+        />
       </div>
 
       {/* Task Status Breakdown */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Task Status Breakdown</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-            <div className="text-center p-4 rounded-lg bg-green-500/10">
-              <p className="text-3xl font-bold text-green-600">
-                {data.overview.completedTasks}
-              </p>
-              <p className="text-sm text-muted-foreground">Completed</p>
+      <TerminalCard title="Task Status Distribution">
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+          <StatusBlock
+            label="Completed"
+            value={data.overview.completedTasks}
+            total={data.overview.totalTasks}
+            color="green"
+          />
+          <StatusBlock
+            label="Running"
+            value={data.overview.runningTasks}
+            total={data.overview.totalTasks}
+            color="yellow"
+          />
+          <StatusBlock
+            label="Pending"
+            value={data.overview.pendingTasks}
+            total={data.overview.totalTasks}
+            color="blue"
+          />
+          <StatusBlock
+            label="Failed"
+            value={data.overview.failedTasks}
+            total={data.overview.totalTasks}
+            color="red"
+          />
+          <StatusBlock
+            label="Total"
+            value={data.overview.totalTasks}
+            total={data.overview.totalTasks}
+            color="gray"
+          />
+        </div>
+      </TerminalCard>
+
+      <div className="grid gap-6 lg:grid-cols-2">
+        {/* Top Workers */}
+        <TerminalCard title="Top Workers" subtitle="by tasks completed">
+          {data.topWorkers.length === 0 ? (
+            <div className="text-center py-8">
+              <pre className="ascii-art text-xs mb-4">{`
+  ╔═══════════════╗
+  ║   ◇     ◇     ║
+  ║      ___      ║
+  ║     /   \\     ║
+  ║    |  ?  |    ║
+  ║     \\___/     ║
+  ╚═══════════════╝
+              `}</pre>
+              <p className="text-muted-foreground text-sm">No workers yet</p>
             </div>
-            <div className="text-center p-4 rounded-lg bg-yellow-500/10">
-              <p className="text-3xl font-bold text-yellow-600">
-                {data.overview.runningTasks}
-              </p>
-              <p className="text-sm text-muted-foreground">Running</p>
+          ) : (
+            <div className="space-y-4">
+              {data.topWorkers.map((worker, index) => (
+                <div
+                  key={worker.id}
+                  className="flex items-center justify-between p-3 rounded border border-border/30 hover:border-border transition-colors animate-slide-in"
+                  style={{ animationDelay: `${index * 50}ms` }}
+                >
+                  <div className="flex items-center gap-4">
+                    <span className="text-2xl font-bold text-muted-foreground w-8">
+                      #{index + 1}
+                    </span>
+                    <div>
+                      <p className="font-medium text-foreground">{worker.name}</p>
+                      <StatusBadge status={worker.status as any} size="sm" />
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-2xl font-bold text-primary tabular-nums">
+                      {worker._count.tasks}
+                    </p>
+                    <p className="text-xs text-muted-foreground">tasks</p>
+                  </div>
+                </div>
+              ))}
             </div>
-            <div className="text-center p-4 rounded-lg bg-blue-500/10">
-              <p className="text-3xl font-bold text-blue-600">
-                {data.overview.pendingTasks}
-              </p>
-              <p className="text-sm text-muted-foreground">Pending</p>
+          )}
+        </TerminalCard>
+
+        {/* Recent Completed Tasks */}
+        <TerminalCard title="Recent Completions" subtitle="last 10 tasks">
+          {data.recentCompletedTasks.length === 0 ? (
+            <div className="text-center py-8">
+              <pre className="ascii-art text-xs mb-4">{`
+  ┌─────────────────┐
+  │  ☐ ─────────    │
+  │  ☐ ─────────    │
+  │  ☐ ─────────    │
+  │       ...       │
+  └─────────────────┘
+              `}</pre>
+              <p className="text-muted-foreground text-sm">No completed tasks yet</p>
             </div>
-            <div className="text-center p-4 rounded-lg bg-red-500/10">
-              <p className="text-3xl font-bold text-red-600">
-                {data.overview.failedTasks}
-              </p>
-              <p className="text-sm text-muted-foreground">Failed</p>
+          ) : (
+            <div className="space-y-2">
+              {data.recentCompletedTasks.map((task, index) => (
+                <div
+                  key={task.id}
+                  className="flex items-center justify-between py-2 border-b border-border/20 last:border-0 animate-slide-in"
+                  style={{ animationDelay: `${index * 30}ms` }}
+                >
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm text-foreground truncate">
+                      {task.prompt.substring(0, 35)}...
+                    </p>
+                    <p className="text-xs text-muted-foreground flex items-center gap-1">
+                      <span className="text-primary/50">⬡</span>
+                      {task.worker?.name || 'Unknown'}
+                    </p>
+                  </div>
+                  <div className="text-right flex-shrink-0 ml-4">
+                    <p className="text-sm font-medium text-green-400 tabular-nums">
+                      {formatDuration(task.duration)}
+                    </p>
+                  </div>
+                </div>
+              ))}
             </div>
-            <div className="text-center p-4 rounded-lg bg-gray-500/10">
-              <p className="text-3xl font-bold text-gray-600">
-                {data.overview.totalTasks}
-              </p>
-              <p className="text-sm text-muted-foreground">Total</p>
-            </div>
+          )}
+        </TerminalCard>
+      </div>
+
+      {/* Performance Chart Placeholder */}
+      <TerminalCard title="Performance Trend" subtitle="coming soon">
+        <div className="h-48 flex items-center justify-center border border-dashed border-border/50 rounded">
+          <div className="text-center">
+            <pre className="ascii-art text-xs mb-2">{`
+    ╭────────────────────────────╮
+    │  ┌─┐                       │
+    │  │ │     ┌─┐               │
+    │  │ │ ┌─┐ │ │     ┌─┐       │
+    │──┴─┴─┴─┴─┴─┴─────┴─┴───────│
+    │  Mon Tue Wed Thu Fri Sat   │
+    ╰────────────────────────────╯
+            `}</pre>
+            <p className="text-xs text-muted-foreground">
+              Charts coming in a future update
+            </p>
           </div>
-        </CardContent>
-      </Card>
+        </div>
+      </TerminalCard>
+    </div>
+  );
+}
+
+function StatusBlock({
+  label,
+  value,
+  total,
+  color,
+}: {
+  label: string;
+  value: number;
+  total: number;
+  color: 'green' | 'yellow' | 'blue' | 'red' | 'gray';
+}) {
+  const percentage = total > 0 ? (value / total) * 100 : 0;
+
+  const colorClasses = {
+    green: 'text-green-400 bg-green-500/10 border-green-500/30',
+    yellow: 'text-yellow-400 bg-yellow-500/10 border-yellow-500/30',
+    blue: 'text-blue-400 bg-blue-500/10 border-blue-500/30',
+    red: 'text-red-400 bg-red-500/10 border-red-500/30',
+    gray: 'text-gray-400 bg-gray-500/10 border-gray-500/30',
+  };
+
+  const progressColors: Record<string, 'green' | 'yellow' | 'blue' | 'orange'> = {
+    green: 'green',
+    yellow: 'yellow',
+    blue: 'blue',
+    red: 'orange',
+    gray: 'orange',
+  };
+
+  return (
+    <div className={`text-center p-4 rounded-lg border ${colorClasses[color]}`}>
+      <p className="text-3xl font-bold tabular-nums">{value}</p>
+      <p className="text-xs text-muted-foreground mt-1">{label}</p>
+      {color !== 'gray' && total > 0 && (
+        <div className="mt-2">
+          <ProgressBar
+            value={percentage}
+            color={progressColors[color]}
+            size="sm"
+          />
+        </div>
+      )}
     </div>
   );
 }
