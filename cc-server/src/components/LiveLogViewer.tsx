@@ -68,13 +68,15 @@ export function LiveLogViewer({ taskId, initialLogs, initialStatus }: LiveLogVie
       });
     });
 
-    // Listen for task completion/failure to update status
-    socket.on('task:completed', () => {
-      setTaskStatus('COMPLETED');
-    });
-
-    socket.on('task:failed', () => {
-      setTaskStatus('FAILED');
+    // Listen for task updates (completion/failure/status changes)
+    socket.on('task:updated', (task: { status: string; result?: string; sessionId?: string }) => {
+      if (task.status === 'COMPLETED' || task.status === 'FAILED' || task.status === 'CANCELLED') {
+        setTaskStatus(task.status as 'COMPLETED' | 'FAILED' | 'CANCELLED');
+        // Trigger page refresh to show result and chat input
+        window.location.reload();
+      } else if (task.status === 'RUNNING') {
+        setTaskStatus('RUNNING');
+      }
     });
 
     socket.on('disconnect', () => {

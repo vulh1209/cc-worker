@@ -31,8 +31,14 @@ export class TaskQueue {
 
     try {
       // Get pending tasks ordered by priority and creation time
+      // Include parent task's sessionId for follow-up session continuity
       const pendingTasks = await prisma.task.findMany({
         where: { status: 'PENDING' },
+        include: {
+          parentTask: {
+            select: { sessionId: true },
+          },
+        },
         orderBy: [
           { priority: 'desc' },
           { createdAt: 'asc' },
@@ -72,11 +78,13 @@ export class TaskQueue {
         }
 
         if (targetWorker) {
-          // Assign task
+          // Assign task with session info for follow-up continuity
           const assigned = await workerManager.assignTask(
             targetWorker.id,
             task.id,
-            task.prompt
+            task.prompt,
+            task.parentTask?.sessionId ?? undefined,  // Pass parent's sessionId for resume
+            task.parentTaskId ?? undefined            // Pass parentTaskId reference
           );
 
           if (assigned) {
@@ -98,7 +106,12 @@ export class TaskQueue {
               onlineWorkers.splice(workerIndex, 1);
             }
 
-            console.log(`[TaskQueue] Assigned task ${task.id} to worker ${targetWorker.name}`);
+            // Log with follow-up info if applicable
+            if (task.parentTaskId) {
+              console.log(`[TaskQueue] Assigned follow-up ${task.id} to ${targetWorker.name} (parent: ${task.parentTaskId}, session: ${task.parentTask?.sessionId})`);
+            } else {
+              console.log(`[TaskQueue] Assigned task ${task.id} to worker ${targetWorker.name}`);
+            }
           }
         }
       }
