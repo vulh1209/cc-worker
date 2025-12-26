@@ -80,6 +80,10 @@ export default async function TaskDetailPage({ params }: PageProps) {
         </div>
         <div className="flex gap-2">
           {isRunning && <CancelButton taskId={task.id} />}
+          {isFailed && <RetryButton taskId={task.id} />}
+          {(isFailed || isCompleted || task.status === 'CANCELLED') && (
+            <DeleteButton taskId={task.id} />
+          )}
           <Link href="/tasks">
             <TerminalButton variant="ghost">
               ← back to tasks
@@ -311,6 +315,47 @@ function CancelButton({ taskId }: { taskId: string }) {
     >
       <TerminalButton type="submit" variant="destructive">
         ✗ cancel task
+      </TerminalButton>
+    </form>
+  );
+}
+
+function RetryButton({ taskId }: { taskId: string }) {
+  async function retryTask() {
+    'use server';
+    const res = await fetch(`${process.env.NEXT_PUBLIC_URL || 'http://localhost:3000'}/api/tasks/${taskId}/retry`, {
+      method: 'POST',
+    });
+    const data = await res.json();
+    if (data.newTaskId) {
+      const { redirect } = await import('next/navigation');
+      redirect(`/tasks/${data.newTaskId}`);
+    }
+  }
+
+  return (
+    <form action={retryTask}>
+      <TerminalButton type="submit" variant="primary">
+        ↻ retry task
+      </TerminalButton>
+    </form>
+  );
+}
+
+function DeleteButton({ taskId }: { taskId: string }) {
+  async function deleteTask() {
+    'use server';
+    await fetch(`${process.env.NEXT_PUBLIC_URL || 'http://localhost:3000'}/api/tasks/${taskId}`, {
+      method: 'DELETE',
+    });
+    const { redirect } = await import('next/navigation');
+    redirect('/tasks');
+  }
+
+  return (
+    <form action={deleteTask}>
+      <TerminalButton type="submit" variant="destructive">
+        🗑 delete
       </TerminalButton>
     </form>
   );
