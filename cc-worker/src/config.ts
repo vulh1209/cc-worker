@@ -26,18 +26,22 @@ const CONFIG_PATHS = [
   join(homedir(), '.cc-worker', 'config.json'),
 ];
 
-function loadConfigFromFile(): Partial<WorkerConfig> {
+function loadConfigFromFile(): { config: Partial<WorkerConfig>; loadedFrom: string | null } {
   for (const configPath of CONFIG_PATHS) {
     if (existsSync(configPath)) {
       try {
         const content = readFileSync(configPath, 'utf-8');
-        return JSON.parse(content);
+        console.log(`[Config] Found config file: ${configPath}`);
+        return { config: JSON.parse(content), loadedFrom: configPath };
       } catch (error) {
-        console.warn(`Failed to parse config file ${configPath}:`, error);
+        console.warn(`[Config] Failed to parse config file ${configPath}:`, error);
       }
+    } else {
+      console.log(`[Config] Config file not found: ${configPath}`);
     }
   }
-  return {};
+  console.log('[Config] No config file found, using environment variables only');
+  return { config: {}, loadedFrom: null };
 }
 
 function loadConfigFromEnv(): Partial<WorkerConfig> {
@@ -58,9 +62,20 @@ function loadConfigFromEnv(): Partial<WorkerConfig> {
   };
 }
 
+// Mask sensitive values for logging (show first 4 and last 4 chars)
+function maskSensitive(value: string | undefined): string {
+  if (!value) return '<not set>';
+  if (value.length <= 12) return '****';
+  return `${value.slice(0, 4)}...${value.slice(-4)}`;
+}
+
 export function loadConfig(): WorkerConfig {
+  console.log('\n[Config] ═══════════════════════════════════════');
+  console.log('[Config] Loading configuration...');
+  console.log('[Config] Current working directory:', process.cwd());
+
   // Merge: file config < env config (env takes priority)
-  const fileConfig = loadConfigFromFile();
+  const { config: fileConfig, loadedFrom } = loadConfigFromFile();
   const envConfig = loadConfigFromEnv();
 
   // Filter out undefined values before merging
@@ -72,6 +87,24 @@ export function loadConfig(): WorkerConfig {
     ...fileConfig,
     ...cleanEnvConfig,
   };
+
+  // Log merged config (with sensitive values masked)
+  console.log('[Config] ───────────────────────────────────────');
+  console.log('[Config] Final configuration:');
+  console.log('[Config]   serverUrl:', merged.serverUrl || '<not set>');
+  console.log('[Config]   apiKey:', maskSensitive(merged.apiKey as string));
+  console.log('[Config]   workerName:', merged.workerName || '<not set>');
+  console.log('[Config]   workingDirectory:', merged.workingDirectory || '<not set>');
+  console.log('[Config]   maxConcurrentTasks:', merged.maxConcurrentTasks ?? 1);
+  console.log('[Config]   reconnectInterval:', merged.reconnectInterval ?? 5000);
+  console.log('[Config]   heartbeatInterval:', merged.heartbeatInterval ?? 30000);
+  if (loadedFrom) {
+    console.log('[Config]   (loaded from file:', loadedFrom + ')');
+  }
+  if (Object.keys(cleanEnvConfig).length > 0) {
+    console.log('[Config]   (env overrides:', Object.keys(cleanEnvConfig).join(', ') + ')');
+  }
+  console.log('[Config] ═══════════════════════════════════════\n');
 
   // Validate with Zod
   const result = configSchema.safeParse(merged);
