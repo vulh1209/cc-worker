@@ -24,8 +24,21 @@ CC_SERVER_URL=ws://localhost:3000
 CC_API_KEY=worker_xxxxxxxx
 CC_WORKER_NAME=my-worker
 CC_WORKING_DIR=/path/to/projects
-ANTHROPIC_API_KEY=sk-ant-xxxxxxxx
 ```
+
+### Authentication
+
+This worker uses **Claude Code CLI subscription** for authentication. Before running the worker:
+
+```bash
+# Install Claude Code CLI (if not installed)
+npm install -g @anthropic-ai/claude-code
+
+# Login with your subscription
+claude login
+```
+
+The worker will automatically use your CLI session - no API key needed!
 
 ### Run in Development
 
@@ -59,7 +72,6 @@ This creates binaries in the `binaries/` folder for:
 | apiKey | CC_API_KEY | Worker API key | Required |
 | workerName | CC_WORKER_NAME | Worker display name | Required |
 | workingDirectory | CC_WORKING_DIR | Claude working directory | Required |
-| claudeApiKey | ANTHROPIC_API_KEY | Anthropic API key | Optional |
 | maxConcurrentTasks | CC_MAX_CONCURRENT_TASKS | Max concurrent tasks | 1 |
 | reconnectInterval | CC_RECONNECT_INTERVAL | Reconnect delay (ms) | 5000 |
 | heartbeatInterval | CC_HEARTBEAT_INTERVAL | Heartbeat interval (ms) | 30000 |
