@@ -40,9 +40,12 @@ CC-Worker is a distributed system for running [Claude Code](https://docs.anthrop
 | **Real-time Dashboard** | Next.js web UI with live task status and logs |
 | **Worker Management** | Register, monitor, and manage remote workers |
 | **Task Queue** | Priority-based task scheduling and distribution |
-| **Live Streaming** | WebSocket-based log streaming to browser |
+| **Live Streaming** | WebSocket-based log streaming to browser with immediate display |
 | **Cross-platform Workers** | Build workers for macOS, Windows, and Linux |
 | **Claude Code SDK** | Native integration with Anthropic's Claude Code |
+| **Task Management** | Retry and delete failed tasks functionality |
+| **Custom CLI Path** | Support for custom Claude CLI path configuration |
+| **Windows Support** | Enhanced Windows binary build and path normalization |
 
 ## Quick Start
 
@@ -123,6 +126,14 @@ cc-worker/
 │
 └── docs/               # Additional documentation
 ```
+
+## Recent Updates (December 26, 2024)
+
+- **Improved Log Streaming**: Logs now stream immediately when navigating to task detail pages
+- **Custom CLI Path**: Workers can now specify custom Claude CLI path for different environments
+- **Windows Enhancements**: Better Windows binary build support with path normalization
+- **Task Management**: Added retry and delete buttons for failed tasks
+- **Config Security**: Worker configuration now masks secrets in logs for better security
 
 ## Documentation
 
