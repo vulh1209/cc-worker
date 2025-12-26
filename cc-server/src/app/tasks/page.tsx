@@ -1,26 +1,34 @@
 import Link from 'next/link';
 import {
   TerminalCard,
-  StatusBadge,
   EmptyState,
   TerminalButton,
-  ProgressBar,
 } from '@/components/terminal-ui';
-import { formatRelativeTime, formatDuration, truncate } from '@/lib/utils';
+import { TaskChainRow } from '@/components/TaskChainRow';
+import { groupTaskChains } from '@/lib/task-chain-utils';
 import prisma from '@/lib/prisma';
 
 export const dynamic = 'force-dynamic';
 
 async function getTasks() {
-  return prisma.task.findMany({
+  const tasks = await prisma.task.findMany({
     orderBy: { createdAt: 'desc' },
-    take: 50,
-    include: {
+    take: 100, // Fetch more since we'll group them
+    select: {
+      id: true,
+      prompt: true,
+      status: true,
+      duration: true,
+      createdAt: true,
+      parentTaskId: true, // Required for chain grouping
       worker: {
         select: { id: true, name: true },
       },
     },
   });
+
+  // Group tasks into chains
+  return groupTaskChains(tasks);
 }
 
 async function getTaskStats() {
@@ -109,8 +117,8 @@ export default async function TasksPage() {
                 </tr>
               </thead>
               <tbody>
-                {tasks.map((task, index) => (
-                  <TaskRow key={task.id} task={task} index={index} />
+                {tasks.map((chain, index) => (
+                  <TaskChainRow key={chain.root.id} chain={chain} index={index} />
                 ))}
               </tbody>
             </table>
@@ -167,79 +175,3 @@ function StatusFilterTab({
   );
 }
 
-function TaskRow({
-  task,
-  index,
-}: {
-  task: {
-    id: string;
-    prompt: string;
-    status: string;
-    duration: number | null;
-    createdAt: Date;
-    worker: { id: string; name: string } | null;
-  };
-  index: number;
-}) {
-  const isRunning = task.status === 'RUNNING';
-
-  return (
-    <tr
-      className="animate-slide-in cursor-pointer"
-      style={{ animationDelay: `${index * 20}ms` }}
-    >
-      <td>
-        <div className="flex items-center gap-2">
-          <StatusBadge status={task.status as any} size="sm" />
-          {isRunning && (
-            <div className="w-16">
-              <ProgressBar value={50} color="yellow" striped size="sm" />
-            </div>
-          )}
-        </div>
-      </td>
-      <td>
-        <Link href={`/tasks/${task.id}`} className="font-mono text-xs text-muted-foreground hover:text-primary">
-          {task.id.substring(0, 8)}
-        </Link>
-      </td>
-      <td>
-        <Link href={`/tasks/${task.id}`} className="block hover:text-primary transition-colors">
-          <p className="text-sm truncate max-w-md">
-            {truncate(task.prompt, 60)}
-          </p>
-        </Link>
-      </td>
-      <td>
-        {task.worker ? (
-          <Link
-            href={`/workers/${task.worker.id}`}
-            className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-primary"
-          >
-            <span className="status-indicator status-online w-1.5 h-1.5" />
-            {task.worker.name}
-          </Link>
-        ) : (
-          <span className="text-xs text-muted-foreground italic">unassigned</span>
-        )}
-      </td>
-      <td>
-        <span className="text-sm text-muted-foreground tabular-nums">
-          {task.duration ? formatDuration(task.duration) : '—'}
-        </span>
-      </td>
-      <td>
-        <span className="text-sm text-muted-foreground">
-          {formatRelativeTime(task.createdAt)}
-        </span>
-      </td>
-      <td>
-        <Link href={`/tasks/${task.id}`}>
-          <TerminalButton variant="ghost" size="sm">
-            →
-          </TerminalButton>
-        </Link>
-      </td>
-    </tr>
-  );
-}
