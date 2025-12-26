@@ -1,4 +1,7 @@
+'use client';
+
 import Link from 'next/link';
+import { useEffect, useState } from 'react';
 import { StatusBadge } from './terminal-ui';
 
 interface TaskChainItem {
@@ -9,18 +12,73 @@ interface TaskChainItem {
 }
 
 interface TaskChainNavProps {
-  parentTask: TaskChainItem | null;
-  followUpTasks: TaskChainItem[];
   currentTaskId: string;
+  parentTaskId: string | null;
+  hasFollowUp: boolean;
+  followUpTaskId?: string;
 }
 
-export function TaskChainNav({ parentTask, followUpTasks, currentTaskId }: TaskChainNavProps) {
+interface ChainData {
+  previousTasks: TaskChainItem[];
+  nextTask: TaskChainItem | null;
+}
+
+export function TaskChainNav({ currentTaskId, parentTaskId, hasFollowUp, followUpTaskId }: TaskChainNavProps) {
+  const [chainData, setChainData] = useState<ChainData | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    // Only fetch if there's a chain (has parent or follow-up)
+    if (!parentTaskId && !hasFollowUp) {
+      setLoading(false);
+      return;
+    }
+
+    async function fetchChain() {
+      try {
+        const response = await fetch(`/api/tasks/${currentTaskId}/chain`);
+        if (response.ok) {
+          const data = await response.json();
+          setChainData(data);
+        }
+      } catch (error) {
+        console.error('Failed to fetch task chain:', error);
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    fetchChain();
+  }, [currentTaskId, parentTaskId, hasFollowUp]);
+
   // Don't render if no chain exists
-  if (!parentTask && followUpTasks.length === 0) {
+  if (!parentTaskId && !hasFollowUp) {
     return null;
   }
 
-  const truncatePrompt = (prompt: string, maxLength = 60) => {
+  if (loading) {
+    return (
+      <div className="terminal-card mb-6">
+        <div className="px-4 py-3 text-sm text-muted-foreground animate-pulse">
+          Loading conversation chain...
+        </div>
+      </div>
+    );
+  }
+
+  if (!chainData) {
+    return null;
+  }
+
+  const { previousTasks, nextTask } = chainData;
+  const hasPrevious = previousTasks.length > 0;
+  const hasNext = !!nextTask;
+
+  if (!hasPrevious && !hasNext) {
+    return null;
+  }
+
+  const truncatePrompt = (prompt: string, maxLength = 50) => {
     if (prompt.length <= maxLength) return prompt;
     return prompt.substring(0, maxLength) + '...';
   };
@@ -31,76 +89,68 @@ export function TaskChainNav({ parentTask, followUpTasks, currentTaskId }: TaskC
         <div className="flex items-center gap-2">
           <span className="text-primary">⬡</span>
           <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-            Conversation Thread
+            Conversation Chain
           </h3>
+          <span className="text-xs text-muted-foreground/50">
+            (1 → 1 linear)
+          </span>
         </div>
       </div>
 
-      <div className="p-4 space-y-3">
-        {/* Parent task */}
-        {parentTask && (
-          <div className="flex items-start gap-3">
-            <div className="flex-shrink-0 w-16 text-xs text-muted-foreground uppercase tracking-wider pt-0.5">
-              Parent
-            </div>
-            <div className="flex-1 min-w-0">
+      <div className="p-4">
+        <div className="flex items-center gap-2 flex-wrap">
+          {/* Previous tasks (up to 2) */}
+          {previousTasks.map((task, index) => (
+            <div key={task.id} className="flex items-center gap-2">
               <Link
-                href={`/tasks/${parentTask.id}`}
-                className="group flex items-center gap-2 hover:text-primary transition-colors"
+                href={`/tasks/${task.id}`}
+                className="group flex items-center gap-1.5 px-2 py-1 rounded bg-surface-elevated hover:bg-primary/10 transition-colors"
               >
-                <span className="text-muted-foreground group-hover:text-primary">◀</span>
-                <span className="text-sm truncate">{truncatePrompt(parentTask.prompt)}</span>
-                <StatusBadge status={parentTask.status as any} size="sm" showDot={false} />
+                <span className="text-muted-foreground/50 text-xs">
+                  {index === 0 && previousTasks.length === 2 ? '◀◀' : '◀'}
+                </span>
+                <span className="text-sm truncate max-w-[120px] group-hover:text-primary transition-colors">
+                  {truncatePrompt(task.prompt, 25)}
+                </span>
+                <StatusBadge status={task.status as any} size="sm" showDot={false} />
               </Link>
+              <span className="text-muted-foreground/30">→</span>
             </div>
-          </div>
-        )}
+          ))}
 
-        {/* Divider if both parent and follow-ups exist */}
-        {parentTask && followUpTasks.length > 0 && (
-          <div className="border-t border-border/30" />
-        )}
-
-        {/* Follow-up tasks */}
-        {followUpTasks.length > 0 && (
-          <div className="space-y-2">
-            <div className="flex items-start gap-3">
-              <div className="flex-shrink-0 w-16 text-xs text-muted-foreground uppercase tracking-wider pt-0.5">
-                Follow-ups
-              </div>
-              <div className="flex-1 space-y-2">
-                {followUpTasks.map((task, index) => {
-                  const isCurrent = task.id === currentTaskId;
-                  return (
-                    <div key={task.id} className="flex items-center gap-2">
-                      <span className="text-muted-foreground/50 text-xs w-4">
-                        {index + 1}.
-                      </span>
-                      {isCurrent ? (
-                        <div className="flex items-center gap-2 text-primary">
-                          <span className="text-xs">●</span>
-                          <span className="text-sm font-medium truncate">
-                            {truncatePrompt(task.prompt)}
-                          </span>
-                          <StatusBadge status={task.status as any} size="sm" showDot={false} />
-                        </div>
-                      ) : (
-                        <Link
-                          href={`/tasks/${task.id}`}
-                          className="group flex items-center gap-2 hover:text-primary transition-colors"
-                        >
-                          <span className="text-muted-foreground/50 group-hover:text-primary">▸</span>
-                          <span className="text-sm truncate">{truncatePrompt(task.prompt)}</span>
-                          <StatusBadge status={task.status as any} size="sm" showDot={false} />
-                        </Link>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
+          {/* Current task */}
+          <div className="flex items-center gap-1.5 px-3 py-1.5 rounded bg-primary/20 border border-primary/30">
+            <span className="text-primary text-xs">●</span>
+            <span className="text-sm font-medium text-primary">Current</span>
           </div>
-        )}
+
+          {/* Next task (if exists) */}
+          {nextTask && (
+            <>
+              <span className="text-muted-foreground/30">→</span>
+              <Link
+                href={`/tasks/${nextTask.id}`}
+                className="group flex items-center gap-1.5 px-2 py-1 rounded bg-surface-elevated hover:bg-primary/10 transition-colors"
+              >
+                <span className="text-sm truncate max-w-[120px] group-hover:text-primary transition-colors">
+                  {truncatePrompt(nextTask.prompt, 25)}
+                </span>
+                <StatusBadge status={nextTask.status as any} size="sm" showDot={false} />
+                <span className="text-muted-foreground/50 text-xs">▶</span>
+              </Link>
+            </>
+          )}
+        </div>
+
+        {/* Navigation hints */}
+        <div className="mt-3 flex items-center gap-4 text-xs text-muted-foreground/60">
+          {hasPrevious && (
+            <span>◀ {previousTasks.length} previous {previousTasks.length === 1 ? 'task' : 'tasks'}</span>
+          )}
+          {hasNext && (
+            <span>▶ Continue to follow-up</span>
+          )}
+        </div>
       </div>
     </div>
   );

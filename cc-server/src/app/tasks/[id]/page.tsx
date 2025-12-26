@@ -28,13 +28,10 @@ async function getTask(id: string) {
       logs: {
         orderBy: { timestamp: 'asc' },
       },
-      // Include parent and follow-up tasks for chain navigation
-      parentTask: {
-        select: { id: true, prompt: true, status: true, createdAt: true },
-      },
+      // Check if this task has a follow-up (for 1-1 chain - block new follow-ups)
       followUpTasks: {
-        select: { id: true, prompt: true, status: true, createdAt: true },
-        orderBy: { createdAt: 'asc' },
+        select: { id: true },
+        take: 1,
       },
     },
   });
@@ -55,7 +52,10 @@ export default async function TaskDetailPage({ params }: PageProps) {
   const isCompleted = task.status === 'COMPLETED';
   const isFailed = task.status === 'FAILED';
   const isFollowUp = !!task.parentTaskId;
-  const canContinue = isCompleted && task.sessionId;
+  const hasFollowUp = task.followUpTasks && task.followUpTasks.length > 0;
+  const followUpTaskId = hasFollowUp ? task.followUpTasks[0].id : undefined;
+  // Can only continue if: completed, has session, AND doesn't already have a follow-up (1-1 chain)
+  const canContinue = isCompleted && task.sessionId && !hasFollowUp;
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -90,9 +90,10 @@ export default async function TaskDetailPage({ params }: PageProps) {
 
       {/* Task Chain Navigation */}
       <TaskChainNav
-        parentTask={task.parentTask}
-        followUpTasks={task.followUpTasks}
         currentTaskId={task.id}
+        parentTaskId={task.parentTaskId}
+        hasFollowUp={hasFollowUp}
+        followUpTaskId={followUpTaskId}
       />
 
       {/* Progress Bar for Running Tasks */}
@@ -268,14 +269,28 @@ export default async function TaskDetailPage({ params }: PageProps) {
           </TerminalCard>
 
           {/* Continue Conversation - only show for completed tasks with session */}
-          {canContinue && (
+          {isCompleted && task.sessionId && (
             <TerminalCard title="Continue Conversation">
-              <ChatInput
-                taskId={task.id}
-                sessionId={task.sessionId}
-                workerStatus={task.worker?.status || null}
-                workerName={task.worker?.name || null}
-              />
+              {hasFollowUp ? (
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                    <span className="text-yellow-400">→</span>
+                    <span>This task already has a follow-up.</span>
+                  </div>
+                  <Link href={`/tasks/${followUpTaskId}`}>
+                    <TerminalButton variant="ghost" size="sm">
+                      Go to follow-up ▸
+                    </TerminalButton>
+                  </Link>
+                </div>
+              ) : (
+                <ChatInput
+                  taskId={task.id}
+                  sessionId={task.sessionId}
+                  workerStatus={task.worker?.status || null}
+                  workerName={task.worker?.name || null}
+                />
+              )}
             </TerminalCard>
           )}
         </div>

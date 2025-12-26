@@ -52,6 +52,19 @@ export async function POST(request: NextRequest, context: RouteContext) {
       );
     }
 
+    // 1-1 chain: Check if parent already has a follow-up (block branching)
+    const existingFollowUp = await prisma.task.findFirst({
+      where: { parentTaskId: parentTaskId },
+      select: { id: true },
+    });
+
+    if (existingFollowUp) {
+      return NextResponse.json(
+        { error: 'This task already has a follow-up. Navigate to the latest task in the chain to continue.' },
+        { status: 400 }
+      );
+    }
+
     // Check if worker is available
     if (!parentTask.worker) {
       return NextResponse.json(
