@@ -24,7 +24,7 @@
     "outputPath": "binaries"
   },
   "dependencies": {
-    "@anthropic-ai/claude-code": "^1.0.0",
+    "@anthropic-ai/claude-code": "^2.0.76",
     "chalk": "^5.3.0",
     "dotenv": "^16.4.5",
     "socket.io-client": "^4.8.1",
