@@ -267,7 +267,7 @@ export default async function TaskDetailPage({ params }: PageProps) {
               <LiveLogViewer
                 taskId={task.id}
                 initialLogs={task.logs}
-                isRunning={isRunning}
+                initialStatus={task.status as 'PENDING' | 'RUNNING' | 'COMPLETED' | 'FAILED' | 'CANCELLED'}
               />
             </div>
           </TerminalCard>

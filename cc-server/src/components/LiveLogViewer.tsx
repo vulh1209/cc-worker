@@ -9,19 +9,24 @@ import { TerminalButton } from './terminal-ui';
 interface LiveLogViewerProps {
   taskId: string;
   initialLogs: TaskLog[];
-  isRunning: boolean;
+  initialStatus: 'PENDING' | 'RUNNING' | 'COMPLETED' | 'FAILED' | 'CANCELLED';
 }
 
-export function LiveLogViewer({ taskId, initialLogs, isRunning }: LiveLogViewerProps) {
+export function LiveLogViewer({ taskId, initialLogs, initialStatus }: LiveLogViewerProps) {
   const [logs, setLogs] = useState<TaskLog[]>(initialLogs);
+  const [taskStatus, setTaskStatus] = useState(initialStatus);
   const [autoScroll, setAutoScroll] = useState(true);
   const [filter, setFilter] = useState<string | null>(null);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const scrollRef = useRef<HTMLDivElement>(null);
   const socketRef = useRef<Socket | null>(null);
 
+  const isActive = taskStatus === 'PENDING' || taskStatus === 'RUNNING';
+  const isRunning = taskStatus === 'RUNNING';
+
   useEffect(() => {
-    if (!isRunning) return;
+    // Subscribe for PENDING and RUNNING tasks to catch logs when task starts
+    if (!isActive) return;
 
     const socket = io({
       path: '/api/ws',
@@ -30,13 +35,46 @@ export function LiveLogViewer({ taskId, initialLogs, isRunning }: LiveLogViewerP
 
     socketRef.current = socket;
 
-    socket.on('connect', () => {
+    socket.on('connect', async () => {
       console.log('Connected to log stream');
       socket.emit('subscribe:task', taskId);
+
+      // Fetch any logs that arrived while connecting to avoid missing logs
+      // during the socket connection establishment period
+      try {
+        const response = await fetch(`/api/tasks/${taskId}/logs`);
+        if (response.ok) {
+          const freshLogs = await response.json();
+          setLogs(freshLogs);
+        }
+      } catch (error) {
+        console.error('Failed to fetch initial logs:', error);
+      }
     });
 
     socket.on('task:log', (log: TaskLog) => {
-      setLogs((prev) => [...prev, log]);
+      // Update status to RUNNING when we receive first log
+      setTaskStatus('RUNNING');
+
+      // Use functional update to avoid race conditions and prevent duplicates
+      setLogs((prev) => {
+        // Check if log already exists (by id or timestamp)
+        const exists = prev.some(
+          (l) => l.id === log.id ||
+            (l.timestamp === log.timestamp && l.type === log.type)
+        );
+        if (exists) return prev;
+        return [...prev, log];
+      });
+    });
+
+    // Listen for task completion/failure to update status
+    socket.on('task:completed', () => {
+      setTaskStatus('COMPLETED');
+    });
+
+    socket.on('task:failed', () => {
+      setTaskStatus('FAILED');
     });
 
     socket.on('disconnect', () => {
@@ -47,7 +85,7 @@ export function LiveLogViewer({ taskId, initialLogs, isRunning }: LiveLogViewerP
       socket.emit('unsubscribe:task', taskId);
       socket.disconnect();
     };
-  }, [taskId, isRunning]);
+  }, [taskId, isActive]);
 
   useEffect(() => {
     if (autoScroll && scrollRef.current) {
@@ -87,10 +125,10 @@ export function LiveLogViewer({ taskId, initialLogs, isRunning }: LiveLogViewerP
           <h3 className="text-sm font-medium text-foreground">
             Execution Logs
           </h3>
-          {isRunning && (
+          {isActive && (
             <span className="flex items-center gap-1.5 px-2 py-0.5 rounded bg-yellow-500/10 border border-yellow-500/30 text-yellow-400 text-xs">
               <span className="status-indicator status-busy w-1.5 h-1.5" />
-              LIVE
+              {isRunning ? 'LIVE' : 'WAITING'}
             </span>
           )}
         </div>
@@ -161,7 +199,7 @@ export function LiveLogViewer({ taskId, initialLogs, isRunning }: LiveLogViewerP
   └─────────────────┘
             `}</pre>
             <p className="text-muted-foreground text-sm">
-              {isRunning ? 'Waiting for logs...' : 'No logs available'}
+              {isActive ? 'Waiting for logs...' : 'No logs available'}
             </p>
           </div>
         ) : (
