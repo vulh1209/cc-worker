@@ -1,0 +1,110 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  # ============================================
+  # CC-Server: Build & Test
+  # ============================================
+  server:
+    name: Server - Build & Lint
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: cc-server
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: cc-server/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Generate Prisma Client
+        run: npx prisma generate
+
+      - name: Type check
+        run: npx tsc --noEmit
+
+      - name: Build
+        run: npm run build
+
+  # ============================================
+  # CC-Worker: Build & Test
+  # ============================================
+  worker:
+    name: Worker - Build & Lint
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: cc-worker
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: cc-worker/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Type check
+        run: npx tsc --noEmit
+
+      - name: Build
+        run: npm run build
+
+  # ============================================
+  # Worker Binary Builds (on release tags)
+  # ============================================
+  build-binaries:
+    name: Build Binaries
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [server, worker]
+
+    defaults:
+      run:
+        working-directory: cc-worker
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: cc-worker/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build all binaries
+        run: npm run build:binary:all
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: cc-worker-binaries
+          path: cc-worker/dist/
+          retention-days: 30

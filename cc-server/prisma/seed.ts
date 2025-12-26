@@ -5,7 +5,8 @@ const prisma = new PrismaClient();
 
 async function main() {
   // Create dev worker
-  const apiKey = 'worker_dev_key';
+  // IMPORTANT: Change this key before deploying to production!
+  const apiKey = process.env.SEED_WORKER_API_KEY || 'CHANGE_ME_BEFORE_PRODUCTION';
   const apiKeyHash = createHash('sha256').update(apiKey).digest('hex');
 
   const worker = await prisma.worker.upsert({
