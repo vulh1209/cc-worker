@@ -9,6 +9,7 @@ import {
   TerminalButton,
 } from '@/components/terminal-ui';
 import prisma from '@/lib/prisma';
+import { requireAuth } from '@/components/AuthGuard';
 
 export const dynamic = 'force-dynamic';
 
@@ -76,6 +77,9 @@ async function getRecentWorkers() {
 }
 
 export default async function HomePage() {
+  // Require authentication - redirects to /login if not logged in
+  await requireAuth('/');
+
   const stats = await getStats();
   const recentTasks = await getRecentTasks();
   const recentWorkers = await getRecentWorkers();

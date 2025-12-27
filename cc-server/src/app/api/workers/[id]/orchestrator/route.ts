@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
+import { requireWorkerAccess } from '@/lib/worker-permissions';
 
 interface RouteParams {
   params: Promise<{ id: string }>;
@@ -9,6 +10,10 @@ interface RouteParams {
 export async function PUT(request: NextRequest, { params }: RouteParams) {
   try {
     const { id } = await params;
+
+    // Require manage access (owner only can modify orchestrator settings)
+    await requireWorkerAccess(id, 'manage');
+
     const body = await request.json().catch(() => ({}));
 
     // Check if worker exists
@@ -60,6 +65,9 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
       message: 'Worker is now the orchestrator',
     });
   } catch (error) {
+    if (error instanceof Error && error.message.includes('Unauthorized')) {
+      return NextResponse.json({ error: error.message }, { status: 403 });
+    }
     console.error('Error setting orchestrator:', error);
     return NextResponse.json(
       { error: 'Failed to set orchestrator' },
@@ -72,6 +80,9 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
 export async function DELETE(request: NextRequest, { params }: RouteParams) {
   try {
     const { id } = await params;
+
+    // Require manage access (owner only can modify orchestrator settings)
+    await requireWorkerAccess(id, 'manage');
 
     // Check if worker exists and is orchestrator
     const worker = await prisma.worker.findUnique({
@@ -107,6 +118,9 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
       message: 'Orchestrator role removed',
     });
   } catch (error) {
+    if (error instanceof Error && error.message.includes('Unauthorized')) {
+      return NextResponse.json({ error: error.message }, { status: 403 });
+    }
     console.error('Error removing orchestrator:', error);
     return NextResponse.json(
       { error: 'Failed to remove orchestrator' },
@@ -119,6 +133,9 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
 export async function GET(request: NextRequest, { params }: RouteParams) {
   try {
     const { id } = await params;
+
+    // Require view access
+    await requireWorkerAccess(id, 'view');
 
     const worker = await prisma.worker.findUnique({
       where: { id },
@@ -140,6 +157,9 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
 
     return NextResponse.json(worker);
   } catch (error) {
+    if (error instanceof Error && error.message.includes('Unauthorized')) {
+      return NextResponse.json({ error: error.message }, { status: 403 });
+    }
     console.error('Error getting orchestrator status:', error);
     return NextResponse.json(
       { error: 'Failed to get orchestrator status' },

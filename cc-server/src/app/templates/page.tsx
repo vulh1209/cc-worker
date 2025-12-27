@@ -3,6 +3,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import prisma from '@/lib/prisma';
+import { requireAuth } from '@/components/AuthGuard';
 
 export const dynamic = 'force-dynamic';
 
@@ -26,6 +27,7 @@ async function getCategories() {
 }
 
 export default async function TemplatesPage() {
+  await requireAuth('/templates');
   const [templates, categories] = await Promise.all([
     getTemplates(),
     getCategories(),

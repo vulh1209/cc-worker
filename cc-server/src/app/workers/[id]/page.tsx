@@ -1,10 +1,13 @@
 import Link from 'next/link';
-import { notFound } from 'next/navigation';
+import { notFound, redirect } from 'next/navigation';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { formatRelativeTime, formatDuration } from '@/lib/utils';
 import prisma from '@/lib/prisma';
+import { getSessionUser } from '@/lib/auth';
+import { checkWorkerAccess } from '@/lib/worker-permissions';
+import { ShareWorkerSection } from './ShareWorkerSection';
 
 interface PageProps {
   params: Promise<{ id: string }>;
@@ -20,6 +23,15 @@ async function getWorker(id: string) {
       },
       _count: {
         select: { tasks: true },
+      },
+      owner: {
+        select: { id: true, email: true, name: true },
+      },
+      sharedWith: {
+        include: {
+          user: { select: { id: true, email: true, name: true } },
+        },
+        orderBy: { sharedAt: 'desc' },
       },
     },
   });
@@ -38,6 +50,18 @@ async function getWorkerStats(id: string) {
 
 export default async function WorkerDetailPage({ params }: PageProps) {
   const { id } = await params;
+
+  // Check access permission
+  const user = await getSessionUser();
+  if (!user) {
+    redirect('/login');
+  }
+
+  const access = await checkWorkerAccess(id, 'view');
+  if (!access.hasAccess) {
+    notFound();
+  }
+
   const [worker, stats] = await Promise.all([
     getWorker(id),
     getWorkerStats(id),
@@ -46,6 +70,8 @@ export default async function WorkerDetailPage({ params }: PageProps) {
   if (!worker) {
     notFound();
   }
+
+  const isOwner = access.isOwner;
 
   const statusColors = {
     ONLINE: 'success',
@@ -210,10 +236,24 @@ export default async function WorkerDetailPage({ params }: PageProps) {
               </Link>
             )}
 
-            <DeleteWorkerButton workerId={worker.id} />
+            {isOwner && <DeleteWorkerButton workerId={worker.id} />}
+
+            {!isOwner && (
+              <p className="text-xs text-muted-foreground text-center">
+                Shared by {worker.owner?.name || worker.owner?.email}
+              </p>
+            )}
           </CardContent>
         </Card>
       </div>
+
+      {/* Sharing Section - Owner only */}
+      {isOwner && (
+        <ShareWorkerSection
+          workerId={worker.id}
+          sharedWith={worker.sharedWith}
+        />
+      )}
 
       {/* Recent Tasks */}
       <Card>

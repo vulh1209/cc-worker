@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
+import { requireApiAuth } from '@/lib/api-auth';
 
 interface RouteParams {
   params: Promise<{ id: string }>;
@@ -7,6 +8,9 @@ interface RouteParams {
 
 // GET /api/tasks/:id - Get task details
 export async function GET(request: NextRequest, { params }: RouteParams) {
+  const { error } = await requireApiAuth();
+  if (error) return error;
+
   try {
     const { id } = await params;
 

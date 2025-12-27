@@ -1,11 +1,21 @@
 import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { generateApiKey, hashApiKey } from '@/lib/utils';
+import { requireApiAuth } from '@/lib/api-auth';
 
-// GET /api/workers - List all workers
+// GET /api/workers - List workers (owned + shared with current user)
 export async function GET() {
+  const { user, error } = await requireApiAuth();
+  if (error) return error;
+
   try {
     const workers = await prisma.worker.findMany({
+      where: {
+        OR: [
+          { ownerId: user.id },
+          { sharedWith: { some: { userId: user.id } } },
+        ],
+      },
       orderBy: { createdAt: 'desc' },
       select: {
         id: true,
@@ -17,13 +27,24 @@ export async function GET() {
         lastSeen: true,
         createdAt: true,
         updatedAt: true,
+        ownerId: true,
+        owner: {
+          select: { id: true, email: true, name: true },
+        },
         _count: {
-          select: { tasks: true },
+          select: { tasks: true, sharedWith: true },
         },
       },
     });
 
-    return NextResponse.json(workers);
+    // Add ownership info to response
+    const workersWithOwnership = workers.map((w) => ({
+      ...w,
+      isOwner: w.ownerId === user.id,
+      isShared: w.ownerId !== user.id,
+    }));
+
+    return NextResponse.json(workersWithOwnership);
   } catch (error) {
     console.error('Error fetching workers:', error);
     return NextResponse.json(
@@ -33,8 +54,11 @@ export async function GET() {
   }
 }
 
-// POST /api/workers - Create new worker (generate API key)
+// POST /api/workers - Create new worker (requires auth)
 export async function POST(request: NextRequest) {
+  const { user, error } = await requireApiAuth();
+  if (error) return error;
+
   try {
     const body = await request.json();
     const { name } = body;
@@ -50,12 +74,13 @@ export async function POST(request: NextRequest) {
     const apiKey = generateApiKey();
     const apiKeyHash = hashApiKey(apiKey);
 
-    // Create worker
+    // Create worker with owner
     const worker = await prisma.worker.create({
       data: {
         name,
-        apiKey, // Store raw key (for display once)
-        apiKeyHash, // Store hash for verification
+        apiKey,
+        apiKeyHash,
+        ownerId: user.id,
       },
     });
 
@@ -63,7 +88,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       id: worker.id,
       name: worker.name,
-      apiKey: apiKey, // Only returned on creation
+      apiKey: apiKey,
       status: worker.status,
       createdAt: worker.createdAt,
     });

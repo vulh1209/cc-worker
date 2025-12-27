@@ -28,9 +28,15 @@ model Worker {
   isOrchestrator     Boolean @default(false)
   orchestratorConfig Json?   // Stores orchestrator-specific settings
 
+  // Ownership
+  ownerId    String?
+  owner      User?         @relation("OwnedWorkers", fields: [ownerId], references: [id])
+  sharedWith WorkerShare[]
+
   @@index([status])
   @@index([lastSeen])
   @@index([isOrchestrator])
+  @@index([ownerId])
 }
 
 model Task {
@@ -135,15 +141,56 @@ model User {
   id            String    @id @default(cuid())
   email         String    @unique
   name          String?
-  passwordHash  String
+  passwordHash  String?   // Nullable for OAuth-only users
   role          UserRole  @default(USER)
   isActive      Boolean   @default(true)
   lastLoginAt   DateTime?
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
+  // OAuth fields
+  googleId      String?   @unique
+  avatarUrl     String?
+
+  // Relations
+  sessions      Session[]
+  ownedWorkers  Worker[]       @relation("OwnedWorkers")
+  sharedWorkers WorkerShare[]  @relation("SharedWorkers")
+
   @@index([email])
   @@index([role])
+  @@index([googleId])
+}
+
+// Persistent sessions (replaces in-memory)
+model Session {
+  id        String   @id @default(cuid())
+  token     String   @unique
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  userAgent String?
+  ipAddress String?
+
+  @@index([token])
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+// Worker sharing
+model WorkerShare {
+  id        String   @id @default(cuid())
+  workerId  String
+  worker    Worker   @relation(fields: [workerId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User     @relation("SharedWorkers", fields: [userId], references: [id], onDelete: Cascade)
+  sharedAt  DateTime @default(now())
+  sharedBy  String   // ID of user who shared
+
+  @@unique([workerId, userId])
+  @@index([workerId])
+  @@index([userId])
 }
 
 enum UserRole {

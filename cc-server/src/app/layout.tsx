@@ -1,6 +1,8 @@
 import type { Metadata } from 'next';
 import { IBM_Plex_Mono, JetBrains_Mono } from 'next/font/google';
 import Link from 'next/link';
+import { Suspense } from 'react';
+import { NavUserMenu } from '@/components/NavUserMenu';
 import './globals.css';
 
 // IBM Plex Mono - distinctive technical monospace
@@ -74,7 +76,7 @@ export default function RootLayout({
                   </div>
                 </div>
 
-                {/* Right: Status + Actions */}
+                {/* Right: Status + User Menu */}
                 <div className="flex items-center gap-4">
                   {/* System Status */}
                   <div className="flex items-center gap-2 px-3 py-1.5 rounded bg-secondary/50 border border-border/50">
@@ -84,11 +86,10 @@ export default function RootLayout({
                     </span>
                   </div>
 
-                  {/* Keyboard shortcut hint */}
-                  <div className="hidden md:flex items-center gap-1.5 text-xs text-muted-foreground">
-                    <kbd className="kbd">⌘</kbd>
-                    <kbd className="kbd">K</kbd>
-                  </div>
+                  {/* User Menu */}
+                  <Suspense fallback={<div className="h-7 w-7 rounded-full bg-secondary animate-pulse" />}>
+                    <NavUserMenu />
+                  </Suspense>
                 </div>
               </div>
             </div>

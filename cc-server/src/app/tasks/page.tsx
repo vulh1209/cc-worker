@@ -7,6 +7,7 @@ import {
 import { TaskChainRow } from '@/components/TaskChainRow';
 import { groupTaskChains } from '@/lib/task-chain-utils';
 import prisma from '@/lib/prisma';
+import { requireAuth } from '@/components/AuthGuard';
 
 export const dynamic = 'force-dynamic';
 
@@ -42,6 +43,7 @@ async function getTaskStats() {
 }
 
 export default async function TasksPage() {
+  await requireAuth('/tasks');
   const [tasks, stats] = await Promise.all([getTasks(), getTaskStats()]);
 
   return (

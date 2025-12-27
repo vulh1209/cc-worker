@@ -1,6 +1,6 @@
 import prisma from './prisma';
 import { getWorkerManager } from './worker-manager';
-import type { TaskType } from '@/types';
+import type { TaskType } from '../types';
 
 // Fallback mode when orchestrator is unavailable
 const FALLBACK_MODE = (process.env.ORCHESTRATION_FALLBACK_MODE || 'hybrid') as 'queue' | 'fallback' | 'hybrid';

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { getWorkerManager } from '@/lib/worker-manager';
+import { requireApiAuth } from '@/lib/api-auth';
 
 interface RouteContext {
   params: Promise<{ id: string }>;
@@ -8,6 +9,9 @@ interface RouteContext {
 
 // POST /api/tasks/:id/follow-up - Create follow-up task in same session
 export async function POST(request: NextRequest, context: RouteContext) {
+  const { error } = await requireApiAuth();
+  if (error) return error;
+
   try {
     const { id: parentTaskId } = await context.params;
     const { prompt } = await request.json();

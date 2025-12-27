@@ -13,7 +13,7 @@ import type {
   OrchestrationDecisionEvent,
   TaskType,
   WorkerRoutingInfo,
-} from '@/types';
+} from '../types';
 import prisma from './prisma';
 import { getOrchestrationHandler } from './orchestration-handler';
 

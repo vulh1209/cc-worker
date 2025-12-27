@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { getWorkerManager } from '@/lib/worker-manager';
+import { requireApiAuth } from '@/lib/api-auth';
 
 interface RouteParams {
   params: Promise<{ id: string }>;
@@ -8,6 +9,9 @@ interface RouteParams {
 
 // POST /api/tasks/:id/cancel - Cancel a task
 export async function POST(request: NextRequest, { params }: RouteParams) {
+  const { error } = await requireApiAuth();
+  if (error) return error;
+
   try {
     const { id } = await params;
 

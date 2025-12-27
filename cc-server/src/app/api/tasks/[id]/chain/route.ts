@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
+import { requireApiAuth } from '@/lib/api-auth';
 
 interface RouteContext {
   params: Promise<{ id: string }>;
@@ -7,6 +8,9 @@ interface RouteContext {
 
 // GET /api/tasks/:id/chain - Get task chain for navigation (2 previous + 1 next)
 export async function GET(request: NextRequest, context: RouteContext) {
+  const { error } = await requireApiAuth();
+  if (error) return error;
+
   try {
     const { id: taskId } = await context.params;
 

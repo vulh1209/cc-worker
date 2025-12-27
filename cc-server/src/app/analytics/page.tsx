@@ -6,6 +6,7 @@ import {
   Divider,
 } from '@/components/terminal-ui';
 import prisma from '@/lib/prisma';
+import { requireAuth } from '@/components/AuthGuard';
 
 export const dynamic = 'force-dynamic';
 
@@ -96,6 +97,7 @@ function formatDuration(ms: number | null): string {
 }
 
 export default async function AnalyticsPage() {
+  await requireAuth('/analytics');
   const data = await getAnalytics();
 
   return (

@@ -1,6 +1,6 @@
 import prisma from './prisma';
 import { getWorkerManager } from './worker-manager';
-import type { OrchestrationDecisionEvent, SubtaskDefinition } from '@/types';
+import type { OrchestrationDecisionEvent, SubtaskDefinition } from '../types';
 
 const MAX_ORCHESTRATION_DEPTH = parseInt(process.env.ORCHESTRATION_MAX_DEPTH || '3');
 

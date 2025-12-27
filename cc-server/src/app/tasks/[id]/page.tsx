@@ -13,6 +13,7 @@ import { ChatInput } from '@/components/ChatInput';
 import { TaskChainNav } from '@/components/TaskChainNav';
 import { formatRelativeTime, formatDuration } from '@/lib/utils';
 import prisma from '@/lib/prisma';
+import { requireAuth } from '@/components/AuthGuard';
 
 interface PageProps {
   params: Promise<{ id: string }>;
@@ -40,6 +41,7 @@ async function getTask(id: string) {
 }
 
 export default async function TaskDetailPage({ params }: PageProps) {
+  await requireAuth('/tasks');
   const { id } = await params;
   const task = await getTask(id);
 

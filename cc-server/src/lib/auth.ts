@@ -1,9 +1,14 @@
 import { createHash, randomBytes } from 'crypto';
-import { cookies } from 'next/headers';
 import prisma from './prisma';
 
 const SESSION_COOKIE_NAME = 'cc_session';
 const SESSION_DURATION_DAYS = 7;
+
+// Dynamic import to avoid AsyncLocalStorage error when running outside Next.js
+async function getCookieStore() {
+  const { cookies } = await import('next/headers');
+  return cookies();
+}
 
 // Hash password
 export function hashPassword(password: string): string {
@@ -28,60 +33,80 @@ export function generateSessionToken(): string {
   return randomBytes(32).toString('hex');
 }
 
-// Simple in-memory session store (use Redis in production)
-const sessions = new Map<string, { userId: string; expiresAt: Date }>();
-
-// Create session
-export async function createSession(userId: string): Promise<string> {
+// Create session (stored in database)
+export async function createSession(
+  userId: string,
+  metadata?: { userAgent?: string; ipAddress?: string }
+): Promise<string> {
   const token = generateSessionToken();
   const expiresAt = new Date();
   expiresAt.setDate(expiresAt.getDate() + SESSION_DURATION_DAYS);
 
-  sessions.set(token, { userId, expiresAt });
+  await prisma.session.create({
+    data: {
+      token,
+      userId,
+      expiresAt,
+      userAgent: metadata?.userAgent,
+      ipAddress: metadata?.ipAddress,
+    },
+  });
 
   return token;
 }
 
-// Verify session and get user
+// Verify session and get user (from database)
 export async function getSessionUser() {
-  const cookieStore = await cookies();
+  const cookieStore = await getCookieStore();
   const sessionToken = cookieStore.get(SESSION_COOKIE_NAME)?.value;
 
   if (!sessionToken) {
     return null;
   }
 
-  const session = sessions.get(sessionToken);
+  const session = await prisma.session.findUnique({
+    where: { token: sessionToken },
+    include: {
+      user: {
+        select: {
+          id: true,
+          email: true,
+          name: true,
+          role: true,
+          avatarUrl: true,
+        },
+      },
+    },
+  });
+
   if (!session) {
     return null;
   }
 
+  // Check if session expired
   if (session.expiresAt < new Date()) {
-    sessions.delete(sessionToken);
+    await prisma.session.delete({ where: { id: session.id } });
     return null;
   }
 
-  const user = await prisma.user.findUnique({
-    where: { id: session.userId },
-    select: {
-      id: true,
-      email: true,
-      name: true,
-      role: true,
-    },
-  });
-
-  return user;
+  return session.user;
 }
 
 // Delete session
 export async function deleteSession(token: string): Promise<void> {
-  sessions.delete(token);
+  await prisma.session.delete({ where: { token } }).catch(() => {
+    // Session may already be deleted
+  });
+}
+
+// Delete all sessions for a user
+export async function deleteAllUserSessions(userId: string): Promise<void> {
+  await prisma.session.deleteMany({ where: { userId } });
 }
 
 // Set session cookie
 export async function setSessionCookie(token: string): Promise<void> {
-  const cookieStore = await cookies();
+  const cookieStore = await getCookieStore();
   cookieStore.set(SESSION_COOKIE_NAME, token, {
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',
@@ -93,7 +118,7 @@ export async function setSessionCookie(token: string): Promise<void> {
 
 // Clear session cookie
 export async function clearSessionCookie(): Promise<void> {
-  const cookieStore = await cookies();
+  const cookieStore = await getCookieStore();
   cookieStore.delete(SESSION_COOKIE_NAME);
 }
 
@@ -113,4 +138,72 @@ export async function requireAuth() {
     throw new Error('Unauthorized: Please log in');
   }
   return user;
+}
+
+// Find or create OAuth user
+export async function findOrCreateOAuthUser(profile: {
+  email: string;
+  name?: string;
+  googleId: string;
+  avatarUrl?: string;
+}) {
+  // Check if user exists with this Google ID
+  let user = await prisma.user.findUnique({
+    where: { googleId: profile.googleId },
+  });
+
+  if (user) {
+    // Update name/avatar if changed
+    return prisma.user.update({
+      where: { id: user.id },
+      data: {
+        name: profile.name || user.name,
+        avatarUrl: profile.avatarUrl || user.avatarUrl,
+        lastLoginAt: new Date(),
+      },
+    });
+  }
+
+  // Check if user exists with same email (link accounts)
+  const existingByEmail = await prisma.user.findUnique({
+    where: { email: profile.email },
+  });
+
+  if (existingByEmail) {
+    // Link Google account to existing user
+    return prisma.user.update({
+      where: { id: existingByEmail.id },
+      data: {
+        googleId: profile.googleId,
+        avatarUrl: profile.avatarUrl || existingByEmail.avatarUrl,
+        name: profile.name || existingByEmail.name,
+        lastLoginAt: new Date(),
+      },
+    });
+  }
+
+  // Create new user - check if first user for ADMIN role
+  const userCount = await prisma.user.count();
+  const isFirstUser = userCount === 0;
+
+  return prisma.user.create({
+    data: {
+      email: profile.email,
+      name: profile.name,
+      googleId: profile.googleId,
+      avatarUrl: profile.avatarUrl,
+      role: isFirstUser ? 'ADMIN' : 'USER',
+      lastLoginAt: new Date(),
+    },
+  });
+}
+
+// Cleanup expired sessions
+export async function cleanupExpiredSessions(): Promise<number> {
+  const result = await prisma.session.deleteMany({
+    where: {
+      expiresAt: { lt: new Date() },
+    },
+  });
+  return result.count;
 }

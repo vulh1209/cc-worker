@@ -8,11 +8,18 @@ import {
 } from '@/components/terminal-ui';
 import prisma from '@/lib/prisma';
 import { formatRelativeTime } from '@/lib/utils';
+import { requireAuth } from '@/components/AuthGuard';
 
 export const dynamic = 'force-dynamic';
 
-async function getWorkers() {
+async function getWorkers(userId: string) {
   return prisma.worker.findMany({
+    where: {
+      OR: [
+        { ownerId: userId },
+        { sharedWith: { some: { userId } } },
+      ],
+    },
     orderBy: [
       { status: 'asc' }, // ONLINE first
       { lastSeen: 'desc' },
@@ -21,12 +28,16 @@ async function getWorkers() {
       _count: {
         select: { tasks: true },
       },
+      owner: {
+        select: { id: true, email: true, name: true },
+      },
     },
   });
 }
 
 export default async function WorkersPage() {
-  const workers = await getWorkers();
+  const user = await requireAuth('/workers');
+  const workers = await getWorkers(user.id);
 
   const onlineCount = workers.filter((w) => w.status === 'ONLINE').length;
   const busyCount = workers.filter((w) => w.status === 'BUSY').length;
@@ -86,6 +97,7 @@ export default async function WorkersPage() {
               key={worker.id}
               worker={worker}
               index={index}
+              currentUserId={user.id}
             />
           ))}
         </div>
@@ -139,6 +151,7 @@ function StatusTab({
 function WorkerGridCard({
   worker,
   index,
+  currentUserId,
 }: {
   worker: {
     id: string;
@@ -148,13 +161,17 @@ function WorkerGridCard({
     hostname: string | null;
     lastSeen: Date | null;
     isOrchestrator?: boolean;
+    ownerId?: string | null;
+    owner?: { id: string; email: string; name: string | null } | null;
     _count?: { tasks: number };
   };
   index: number;
+  currentUserId?: string;
 }) {
   const isOnline = worker.status === 'ONLINE';
   const isBusy = worker.status === 'BUSY';
   const isOrchestrator = worker.isOrchestrator;
+  const isShared = currentUserId && worker.ownerId !== currentUserId;
 
   return (
     <div
@@ -180,6 +197,11 @@ function WorkerGridCard({
                   {isOrchestrator && (
                     <span className="text-[10px] px-1.5 py-0.5 rounded bg-purple-500/20 text-purple-400 border border-purple-500/30">
                       🎯 orchestrator
+                    </span>
+                  )}
+                  {isShared && (
+                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-400 border border-blue-500/30">
+                      shared
                     </span>
                   )}
                 </h3>

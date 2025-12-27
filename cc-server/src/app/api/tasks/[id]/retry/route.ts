@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
+import { requireApiAuth } from '@/lib/api-auth';
 
 interface RouteParams {
   params: Promise<{ id: string }>;
@@ -7,6 +8,9 @@ interface RouteParams {
 
 // POST /api/tasks/:id/retry - Retry a failed task by creating a new task with same prompt
 export async function POST(request: NextRequest, { params }: RouteParams) {
+  const { error } = await requireApiAuth();
+  if (error) return error;
+
   try {
     const { id } = await params;
 

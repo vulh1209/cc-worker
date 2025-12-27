@@ -4,6 +4,7 @@ import { parse } from 'url';
 import next from 'next';
 import { initSocketIO } from './src/lib/websocket-server';
 import { initTaskQueue } from './src/lib/task-queue';
+import { cleanupExpiredSessions } from './src/lib/auth';
 
 const dev = process.env.NODE_ENV !== 'production';
 const hostname = 'localhost';
@@ -28,5 +29,18 @@ app.prepare().then(() => {
     console.log(`> Ready on http://${hostname}:${port}`);
     console.log(`> WebSocket server running on ws://${hostname}:${port}/api/ws`);
     console.log(`> Task queue processor started`);
+
+    // Cleanup expired sessions every hour
+    setInterval(async () => {
+      try {
+        const count = await cleanupExpiredSessions();
+        if (count > 0) {
+          console.log(`> Cleaned up ${count} expired sessions`);
+        }
+      } catch (error) {
+        console.error('Session cleanup error:', error);
+      }
+    }, 60 * 60 * 1000); // 1 hour
+    console.log(`> Session cleanup scheduled (hourly)`);
   });
 });

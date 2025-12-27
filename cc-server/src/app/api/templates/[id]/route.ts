@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
+import { requireApiAuth } from '@/lib/api-auth';
 
 interface RouteParams {
   params: Promise<{ id: string }>;
@@ -7,6 +8,9 @@ interface RouteParams {
 
 // GET /api/templates/:id - Get template
 export async function GET(request: NextRequest, { params }: RouteParams) {
+  const { error } = await requireApiAuth();
+  if (error) return error;
+
   try {
     const { id } = await params;
 
@@ -33,6 +37,9 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
 
 // PUT /api/templates/:id - Update template
 export async function PUT(request: NextRequest, { params }: RouteParams) {
+  const { error } = await requireApiAuth();
+  if (error) return error;
+
   try {
     const { id } = await params;
     const body = await request.json();
@@ -61,6 +68,9 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
 
 // DELETE /api/templates/:id - Delete template
 export async function DELETE(request: NextRequest, { params }: RouteParams) {
+  const { error } = await requireApiAuth();
+  if (error) return error;
+
   try {
     const { id } = await params;
 
@@ -80,6 +90,9 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
 
 // POST /api/templates/:id/use - Increment usage count
 export async function POST(request: NextRequest, { params }: RouteParams) {
+  const { error } = await requireApiAuth();
+  if (error) return error;
+
   try {
     const { id } = await params;
 

@@ -1,9 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { getWorkerManager } from '@/lib/worker-manager';
+import { requireApiAuth } from '@/lib/api-auth';
 
 // GET /api/tasks - List all tasks
 export async function GET(request: NextRequest) {
+  const { error } = await requireApiAuth();
+  if (error) return error;
+
   try {
     const { searchParams } = new URL(request.url);
     const status = searchParams.get('status');
@@ -51,6 +55,9 @@ export async function GET(request: NextRequest) {
 
 // POST /api/tasks - Create new task
 export async function POST(request: NextRequest) {
+  const { error } = await requireApiAuth();
+  if (error) return error;
+
   try {
     const body = await request.json();
     const { prompt, workerId } = body;
