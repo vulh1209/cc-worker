@@ -15,6 +15,7 @@ import type {
 } from './webhook-schemas';
 
 const BOT_USERNAME = process.env.GITHUB_BOT_USERNAME || 'cc-worker-bot';
+const PR_REVIEW_TASK_PRIORITY = 50; // Medium-high priority for PR reviews
 
 // Internal types for PR creation (uses fields from validated payloads)
 type GitHubRepository = ValidatedPullRequestPayload['repository'];
@@ -348,7 +349,7 @@ async function createPRReviewTask(params: {
         data: {
           prompt,
           status: 'PENDING',
-          priority: 50, // Medium-high priority for PR reviews
+          priority: PR_REVIEW_TASK_PRIORITY,
           taskType: 'PR_REVIEW',
           workerId: targetWorkerId, // Pre-assign to specific worker
         },
