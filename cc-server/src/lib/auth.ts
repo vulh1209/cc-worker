@@ -6,6 +6,7 @@ const SESSION_DURATION_DAYS = 7;
 
 // Dynamic import to avoid AsyncLocalStorage error when running outside Next.js
 async function getCookieStore() {
+  // @ts-ignore - next/headers only available in Next.js runtime
   const { cookies } = await import('next/headers');
   return cookies();
 }
