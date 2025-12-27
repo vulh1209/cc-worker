@@ -553,44 +553,52 @@ export class WorkerManager {
   /**
    * Sync worker's GitHub repository assignments
    * Creates WorkerRepository records for repos that exist in DB
+   * Uses batch queries to avoid N+1 problem
    */
   private async syncWorkerRepoAssignments(
     workerId: string,
     repoFullNames: string[]
   ): Promise<void> {
-    for (const fullName of repoFullNames) {
-      try {
-        // Find repo by fullName (e.g., "owner/repo")
-        const repo = await prisma.gitHubRepository.findFirst({
-          where: { fullName },
-        });
+    if (repoFullNames.length === 0) return;
 
-        if (!repo) {
-          console.log(`[Worker] Repo ${fullName} not found in DB, skipping assignment`);
-          continue;
-        }
+    try {
+      // Batch fetch all repos in a single query
+      const repos = await prisma.gitHubRepository.findMany({
+        where: { fullName: { in: repoFullNames } },
+        select: { id: true, fullName: true },
+      });
 
-        // Create or update assignment
-        await prisma.workerRepository.upsert({
-          where: {
-            workerId_repositoryId: {
+      // Log repos that weren't found
+      const foundFullNames = new Set(repos.map((r) => r.fullName));
+      const notFound = repoFullNames.filter((name) => !foundFullNames.has(name));
+      if (notFound.length > 0) {
+        console.log(`[Worker] Repos not found in DB, skipping: ${notFound.join(', ')}`);
+      }
+
+      if (repos.length === 0) return;
+
+      // Batch upsert all assignments in a transaction
+      await prisma.$transaction(
+        repos.map((repo) =>
+          prisma.workerRepository.upsert({
+            where: {
+              workerId_repositoryId: {
+                workerId,
+                repositoryId: repo.id,
+              },
+            },
+            create: {
               workerId,
               repositoryId: repo.id,
             },
-          },
-          create: {
-            workerId,
-            repositoryId: repo.id,
-          },
-          update: {
-            // Just touch the record to confirm it still exists
-          },
-        });
+            update: {},
+          })
+        )
+      );
 
-        console.log(`[Worker] Assigned to repo: ${fullName}`);
-      } catch (error) {
-        console.error(`[Worker] Failed to assign repo ${fullName}:`, error);
-      }
+      console.log(`[Worker] Assigned to ${repos.length} repo(s): ${repos.map((r) => r.fullName).join(', ')}`);
+    } catch (error) {
+      console.error(`[Worker] Failed to sync repo assignments:`, error);
     }
   }
 }

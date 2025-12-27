@@ -52,7 +52,16 @@ export async function generateAppJWT(): Promise<string> {
  * Uses a mutex pattern to prevent concurrent refresh requests.
  */
 export async function getInstallationAccessToken(installationId: number): Promise<string> {
-  // Check cached token first
+  // IMPORTANT: Check lock FIRST before any database query
+  // This prevents race condition where multiple requests see expired token
+  // and all try to refresh simultaneously
+  const existingRefresh = tokenRefreshLocks.get(installationId);
+  if (existingRefresh) {
+    console.debug(`[GitHub App] Waiting for existing token refresh for installation ${installationId}`);
+    return existingRefresh;
+  }
+
+  // Check cached token in database
   const installation = await prisma.gitHubInstallation.findUnique({
     where: { installationId },
   });
@@ -66,11 +75,11 @@ export async function getInstallationAccessToken(installationId: number): Promis
     }
   }
 
-  // Check if a refresh is already in progress for this installation
-  const existingRefresh = tokenRefreshLocks.get(installationId);
-  if (existingRefresh) {
-    console.debug(`[GitHub App] Waiting for existing token refresh for installation ${installationId}`);
-    return existingRefresh;
+  // Double-check lock after DB query (another request might have started refresh)
+  const refreshStartedDuringQuery = tokenRefreshLocks.get(installationId);
+  if (refreshStartedDuringQuery) {
+    console.debug(`[GitHub App] Refresh started during DB query for installation ${installationId}`);
+    return refreshStartedDuringQuery;
   }
 
   // Start a new token refresh and store the promise
