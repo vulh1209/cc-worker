@@ -20,7 +20,9 @@ COPY . .
 # Build server.ts
 RUN npx tsc -p tsconfig.server.json
 
-# Build Next.js
+# Build Next.js with production URL
+ARG APP_URL=https://cc-server-quiet-feather-4833.fly.dev
+ENV APP_URL=$APP_URL
 RUN npm run build
 
 # Production stage
