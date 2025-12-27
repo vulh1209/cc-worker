@@ -8,84 +8,23 @@ import prisma from '../prisma';
 import { fetchPRDiff, isLargePR, getFileSummary } from './pr-diff-fetcher';
 import { addCommentReaction, getPullRequest } from './api-client';
 import type { PRReviewContext } from '@/types';
+import type {
+  ValidatedPullRequestPayload,
+  ValidatedIssueCommentPayload,
+  ValidatedInstallationPayload,
+} from './webhook-schemas';
 
 const BOT_USERNAME = process.env.GITHUB_BOT_USERNAME || 'cc-worker-bot';
 
-// GitHub Webhook Payload Types
-interface GitHubUser {
-  id: number;
-  login: string;
-  type: string;
-}
-
-interface GitHubRepository {
-  id: number;
-  name: string;
-  full_name: string;
-  owner: GitHubUser;
-  default_branch: string;
-}
-
-interface GitHubPullRequest {
-  number: number;
-  title: string;
-  body: string | null;
-  state: string;
-  user: GitHubUser;
-  head: { sha: string; ref: string };
-  base: { ref: string };
-  html_url: string;
-  additions: number;
-  deletions: number;
-  changed_files: number;
-}
-
-interface GitHubInstallation {
-  id: number;
-  account: GitHubUser;
-}
-
-interface GitHubComment {
-  id: number;
-  body: string;
-  user: GitHubUser;
-}
-
-interface GitHubIssue {
-  number: number;
-  title: string;
-  pull_request?: { url: string };
-}
-
-export interface PullRequestWebhookPayload {
-  action: string;
-  pull_request: GitHubPullRequest;
-  repository: GitHubRepository;
-  installation: GitHubInstallation;
-  sender: GitHubUser;
-}
-
-export interface IssueCommentWebhookPayload {
-  action: string;
-  comment: GitHubComment;
-  issue: GitHubIssue;
-  repository: GitHubRepository;
-  installation: GitHubInstallation;
-  sender: GitHubUser;
-}
-
-export interface InstallationWebhookPayload {
-  action: string;
-  installation: GitHubInstallation;
-  repositories?: Array<{ id: number; name: string; full_name: string }>;
-  sender: GitHubUser;
-}
+// Internal types for PR creation (uses fields from validated payloads)
+type GitHubRepository = ValidatedPullRequestPayload['repository'];
+type GitHubPullRequest = ValidatedPullRequestPayload['pull_request'];
 
 /**
  * Handle pull_request.opened or pull_request.synchronize events
  */
 export async function handlePullRequestOpened(
-  payload: PullRequestWebhookPayload
+  payload: ValidatedPullRequestPayload
 ): Promise<{ taskId: string | null; skipped: boolean; reason?: string }> {
   const { pull_request, repository, installation } = payload;
 
@@ -129,7 +68,7 @@ export async function handlePullRequestOpened(
  * Handle issue_comment.created events for @mentions
  */
 export async function handleIssueComment(
-  payload: IssueCommentWebhookPayload
+  payload: ValidatedIssueCommentPayload
 ): Promise<{ taskId: string | null; skipped: boolean; reason?: string }> {
   const { comment, issue, repository, installation } = payload;
 
@@ -216,7 +155,7 @@ export async function handleIssueComment(
  * Handle installation events (created, deleted)
  */
 export async function handleInstallation(
-  payload: InstallationWebhookPayload
+  payload: ValidatedInstallationPayload
 ): Promise<void> {
   const { action, installation, repositories } = payload;
 

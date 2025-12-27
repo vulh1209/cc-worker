@@ -11,29 +11,46 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { verifyWebhookSignature, isWebhookVerificationConfigured } from '@/lib/github/webhook-verification';
+import {
+  verifyWebhookSignature,
+  isWebhookVerificationConfigured,
+  shouldRequireWebhookVerification,
+} from '@/lib/github/webhook-verification';
+import { ZodError } from 'zod';
 import {
   handlePullRequestOpened,
   handleIssueComment,
   handleInstallation,
-  type PullRequestWebhookPayload,
-  type IssueCommentWebhookPayload,
-  type InstallationWebhookPayload,
 } from '@/lib/github/webhook-handlers';
+import {
+  validatePullRequestPayload,
+  validateIssueCommentPayload,
+  validateInstallationPayload,
+} from '@/lib/github/webhook-schemas';
 
 export async function POST(request: NextRequest) {
   // Get raw body for signature verification
   const rawBody = await request.text();
 
   // Verify webhook signature
-  if (isWebhookVerificationConfigured()) {
+  // In production, we fail-closed: reject if verification is not configured
+  // In development, we allow unconfigured webhooks for easier testing
+  if (shouldRequireWebhookVerification()) {
+    if (!isWebhookVerificationConfigured()) {
+      console.error('[GitHub Webhook] GITHUB_WEBHOOK_SECRET not configured in production - rejecting webhook');
+      return NextResponse.json(
+        { error: 'Webhook verification not configured' },
+        { status: 500 }
+      );
+    }
+
     const signature = request.headers.get('X-Hub-Signature-256');
     if (!verifyWebhookSignature(rawBody, signature)) {
       console.error('[GitHub Webhook] Invalid signature');
       return NextResponse.json({ error: 'Invalid signature' }, { status: 401 });
     }
   } else {
-    console.warn('[GitHub Webhook] Signature verification not configured - accepting all webhooks');
+    console.warn('[GitHub Webhook] Signature verification not configured - accepting webhook (development mode)');
   }
 
   // Parse event type
@@ -52,7 +69,8 @@ export async function POST(request: NextRequest) {
   try {
     switch (event) {
       case 'pull_request': {
-        const prPayload = payload as PullRequestWebhookPayload;
+        // Validate payload structure with Zod
+        const prPayload = validatePullRequestPayload(payload);
 
         // Only process opened and synchronize actions
         if (prPayload.action === 'opened' || prPayload.action === 'synchronize') {
@@ -75,7 +93,8 @@ export async function POST(request: NextRequest) {
       }
 
       case 'issue_comment': {
-        const commentPayload = payload as IssueCommentWebhookPayload;
+        // Validate payload structure with Zod
+        const commentPayload = validateIssueCommentPayload(payload);
 
         // Only process created comments
         if (commentPayload.action === 'created') {
@@ -99,7 +118,8 @@ export async function POST(request: NextRequest) {
 
       case 'installation':
       case 'installation_repositories': {
-        const installPayload = payload as InstallationWebhookPayload;
+        // Validate payload structure with Zod
+        const installPayload = validateInstallationPayload(payload);
         await handleInstallation(installPayload);
         return NextResponse.json({
           received: true,
@@ -130,6 +150,16 @@ export async function POST(request: NextRequest) {
     }
   } catch (error) {
     console.error('[GitHub Webhook] Error processing webhook:', error);
+
+    // Handle Zod validation errors (malformed payload)
+    if (error instanceof ZodError) {
+      console.error('[GitHub Webhook] Payload validation failed:', error.issues);
+      return NextResponse.json({
+        received: true,
+        error: 'Invalid webhook payload structure',
+        details: error.issues.map((issue) => `${issue.path.join('.')}: ${issue.message}`),
+      });
+    }
 
     // Differentiate between transient and permanent errors
     // Transient errors (5xx) will trigger GitHub retry
