@@ -22,7 +22,14 @@ const GitHubRepositorySchema = z.object({
   default_branch: z.string(),
 });
 
+// Installation schema - account is optional in some webhook contexts
 const GitHubInstallationSchema = z.object({
+  id: z.number(),
+  account: GitHubUserSchema.optional(),
+});
+
+// Full installation schema with required account (for installation events)
+const GitHubInstallationFullSchema = z.object({
   id: z.number(),
   account: GitHubUserSchema,
 });
@@ -81,10 +88,10 @@ export const IssueCommentWebhookPayloadSchema = z.object({
   sender: GitHubUserSchema,
 });
 
-// Installation webhook payload
+// Installation webhook payload - uses full schema since we need account info
 export const InstallationWebhookPayloadSchema = z.object({
   action: z.string(),
-  installation: GitHubInstallationSchema,
+  installation: GitHubInstallationFullSchema,
   repositories: z
     .array(
       z.object({
