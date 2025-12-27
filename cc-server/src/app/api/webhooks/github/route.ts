@@ -131,13 +131,51 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     console.error('[GitHub Webhook] Error processing webhook:', error);
 
-    // Return 200 to prevent GitHub from retrying
-    // Log the error for debugging
+    // Differentiate between transient and permanent errors
+    // Transient errors (5xx) will trigger GitHub retry
+    // Permanent errors (200) prevent unnecessary retries
+    if (isTransientError(error)) {
+      console.warn('[GitHub Webhook] Transient error - allowing GitHub retry');
+      return NextResponse.json(
+        { error: 'Temporary failure, please retry' },
+        { status: 503 }
+      );
+    }
+
+    // Permanent failure - acknowledge to prevent retries
     return NextResponse.json({
       received: true,
       error: error instanceof Error ? error.message : 'Unknown error',
     });
   }
+}
+
+/**
+ * Determine if an error is transient (should be retried) or permanent
+ */
+function isTransientError(error: unknown): boolean {
+  if (!(error instanceof Error)) return false;
+
+  const message = error.message.toLowerCase();
+  const transientPatterns = [
+    'econnrefused',
+    'econnreset',
+    'etimedout',
+    'socket hang up',
+    'network',
+    'timeout',
+    'temporarily unavailable',
+    'too many connections',
+    'connection refused',
+    'database',
+    'prisma',
+    'p1001', // Prisma: Can't reach database
+    'p1002', // Prisma: Database timeout
+    'p1008', // Prisma: Operations timed out
+    'p1017', // Prisma: Server closed connection
+  ];
+
+  return transientPatterns.some((pattern) => message.includes(pattern));
 }
 
 // GitHub requires GET to return 200 for webhook URL validation

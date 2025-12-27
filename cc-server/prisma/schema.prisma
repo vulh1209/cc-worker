@@ -230,7 +230,7 @@ model GitHubInstallation {
   accountLogin    String    // org or user name
   accountType     String    // "User" | "Organization"
   accountId       Int
-  accessToken     String?   @db.Text  // Encrypted installation access token
+  accessToken     String?   @db.Text  // Cached installation access token (short-lived, ~1hr expiry)
   tokenExpiresAt  DateTime?
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt

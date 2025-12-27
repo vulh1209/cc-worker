@@ -4,14 +4,19 @@
  * GET /api/github/repositories - List all configured repositories
  */
 
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
+import { requireApiAuth } from '@/lib/api-auth';
 
 /**
  * GET /api/github/repositories
  * List all GitHub repositories configured for PR review
  */
-export async function GET(request: NextRequest) {
+export async function GET() {
+  // Require authentication
+  const { error } = await requireApiAuth();
+  if (error) return error;
+
   try {
     const repositories = await prisma.gitHubRepository.findMany({
       include: {

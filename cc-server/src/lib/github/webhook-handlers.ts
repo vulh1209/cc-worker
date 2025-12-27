@@ -6,8 +6,7 @@
 
 import prisma from '../prisma';
 import { fetchPRDiff, isLargePR, getFileSummary } from './pr-diff-fetcher';
-import { getInstallationAccessToken } from './app';
-import { addCommentReaction, getPullRequest, getRepository } from './api-client';
+import { addCommentReaction, getPullRequest } from './api-client';
 import type { PRReviewContext } from '@/types';
 
 const BOT_USERNAME = process.env.GITHUB_BOT_USERNAME || 'cc-worker-bot';
@@ -110,24 +109,8 @@ export async function handlePullRequestOpened(
     return { taskId: null, skipped: true, reason: 'Auto-review disabled' };
   }
 
-  // Check for duplicate review (same PR + SHA)
-  const existing = await prisma.gitHubPRReview.findUnique({
-    where: {
-      repositoryId_prNumber_headSha: {
-        repositoryId: repoConfig.id,
-        prNumber: pull_request.number,
-        headSha: pull_request.head.sha,
-      },
-    },
-  });
-
-  if (existing) {
-    console.log(`[GitHub Webhook] Review already exists for PR #${pull_request.number} @ ${pull_request.head.sha.substring(0, 7)}`);
-    return { taskId: null, skipped: true, reason: 'Review already exists' };
-  }
-
-  // Create the review task
-  const taskId = await createPRReviewTask({
+  // Create the review task (handles duplicate check internally with proper race condition handling)
+  const result = await createPRReviewTask({
     repoConfig,
     installationId: installation.id,
     pr: pull_request,
@@ -135,7 +118,11 @@ export async function handlePullRequestOpened(
     triggeredBy: 'auto',
   });
 
-  return { taskId, skipped: false };
+  if (result.skipped) {
+    return { taskId: null, skipped: true, reason: result.reason };
+  }
+
+  return { taskId: result.taskId, skipped: false };
 }
 
 /**
@@ -197,8 +184,8 @@ export async function handleIssueComment(
     issue.number
   );
 
-  // Create the review task
-  const taskId = await createPRReviewTask({
+  // Create the review task (handles duplicate check internally with proper race condition handling)
+  const result = await createPRReviewTask({
     repoConfig,
     installationId: installation.id,
     pr: {
@@ -218,7 +205,11 @@ export async function handleIssueComment(
     triggeredBy: `mention:${comment.user.login}`,
   });
 
-  return { taskId, skipped: false };
+  if (result.skipped) {
+    return { taskId: null, skipped: true, reason: result.reason };
+  }
+
+  return { taskId: result.taskId, skipped: false };
 }
 
 /**
@@ -277,8 +268,12 @@ export async function handleInstallation(
     // Delete installation (cascade will delete repos and reviews)
     await prisma.gitHubInstallation.delete({
       where: { installationId: installation.id },
-    }).catch(() => {
-      // Installation might not exist
+    }).catch((error) => {
+      // Installation might not exist - log for debugging but don't fail
+      console.debug(
+        `[GitHub Webhook] Installation ${installation.id} already deleted or not found:`,
+        error instanceof Error ? error.message : 'Unknown error'
+      );
     });
   }
 }
@@ -330,8 +325,16 @@ async function findWorkerForRepo(repositoryId: string): Promise<string | null> {
   return null;
 }
 
+interface CreatePRReviewResult {
+  taskId: string | null;
+  skipped: boolean;
+  reason?: string;
+}
+
 /**
  * Create a PR review task
+ * Uses optimistic concurrency to handle race conditions - attempts to create
+ * the review record first and catches unique constraint violations.
  */
 async function createPRReviewTask(params: {
   repoConfig: { id: string; owner: string; name: string; fullName: string };
@@ -339,7 +342,7 @@ async function createPRReviewTask(params: {
   pr: GitHubPullRequest;
   repository: GitHubRepository;
   triggeredBy: string;
-}): Promise<string | null> {
+}): Promise<CreatePRReviewResult> {
   const { repoConfig, installationId, pr, repository, triggeredBy } = params;
 
   // Find a worker assigned to this repository
@@ -349,28 +352,10 @@ async function createPRReviewTask(params: {
     console.log(
       `[GitHub Webhook] No worker assigned to ${repoConfig.fullName}, cannot create PR review task`
     );
-    return null;
+    return { taskId: null, skipped: true, reason: 'No worker assigned' };
   }
 
-  // Check if review already exists for this PR + headSha
-  const existingReview = await prisma.gitHubPRReview.findUnique({
-    where: {
-      repositoryId_prNumber_headSha: {
-        repositoryId: repoConfig.id,
-        prNumber: pr.number,
-        headSha: pr.head.sha,
-      },
-    },
-  });
-
-  if (existingReview) {
-    console.log(
-      `[GitHub Webhook] Review already exists for PR #${pr.number} @ ${pr.head.sha.substring(0, 7)}, skipping`
-    );
-    return existingReview.taskId;
-  }
-
-  // Fetch the diff
+  // Fetch the diff first (before attempting to create records)
   const diff = await fetchPRDiff(
     installationId,
     repository.owner.login,
@@ -415,36 +400,54 @@ async function createPRReviewTask(params: {
     prompt += '\n\n' + getFileSummary(diff.files);
   }
 
-  // Create task with specific worker assignment
-  const task = await prisma.task.create({
-    data: {
-      prompt,
-      status: 'PENDING',
-      priority: 50, // Medium-high priority for PR reviews
-      taskType: 'PR_REVIEW',
-      workerId: targetWorkerId, // Pre-assign to specific worker
-    },
-  });
+  // Use a transaction to atomically create task and review record
+  // This handles race conditions via unique constraint violation
+  try {
+    const result = await prisma.$transaction(async (tx) => {
+      // Create task with specific worker assignment
+      const task = await tx.task.create({
+        data: {
+          prompt,
+          status: 'PENDING',
+          priority: 50, // Medium-high priority for PR reviews
+          taskType: 'PR_REVIEW',
+          workerId: targetWorkerId, // Pre-assign to specific worker
+        },
+      });
 
-  // Create PR review record
-  await prisma.gitHubPRReview.create({
-    data: {
-      repositoryId: repoConfig.id,
-      prNumber: pr.number,
-      prTitle: pr.title,
-      prAuthor: pr.user.login,
-      headSha: pr.head.sha,
-      taskId: task.id,
-      status: 'PENDING',
-      triggeredBy,
-    },
-  });
+      // Create PR review record - unique constraint will fail if duplicate
+      await tx.gitHubPRReview.create({
+        data: {
+          repositoryId: repoConfig.id,
+          prNumber: pr.number,
+          prTitle: pr.title,
+          prAuthor: pr.user.login,
+          headSha: pr.head.sha,
+          taskId: task.id,
+          status: 'PENDING',
+          triggeredBy,
+        },
+      });
 
-  console.log(
-    `[GitHub Webhook] Created PR review task ${task.id} for PR #${pr.number} -> worker ${targetWorkerId}`
-  );
+      return task.id;
+    });
 
-  return task.id;
+    console.log(
+      `[GitHub Webhook] Created PR review task ${result} for PR #${pr.number} -> worker ${targetWorkerId}`
+    );
+
+    return { taskId: result, skipped: false };
+  } catch (error) {
+    // Handle unique constraint violation (P2002) - another webhook already created this review
+    if ((error as { code?: string }).code === 'P2002') {
+      console.log(
+        `[GitHub Webhook] Review already exists for PR #${pr.number} @ ${pr.head.sha.substring(0, 7)} (concurrent request)`
+      );
+      return { taskId: null, skipped: true, reason: 'Review already exists' };
+    }
+    // Re-throw other errors
+    throw error;
+  }
 }
 
 /**

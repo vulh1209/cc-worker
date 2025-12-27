@@ -8,6 +8,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
+import { requireApiAuth, requireApiAdmin } from '@/lib/api-auth';
 
 interface RouteParams {
   params: Promise<{ id: string }>;
@@ -17,7 +18,11 @@ interface RouteParams {
  * GET /api/workers/:id/repositories
  * List all repositories assigned to a worker
  */
-export async function GET(request: NextRequest, { params }: RouteParams) {
+export async function GET(_request: NextRequest, { params }: RouteParams) {
+  // Require authentication
+  const { error } = await requireApiAuth();
+  if (error) return error;
+
   const { id } = await params;
 
   try {
@@ -67,6 +72,10 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
  * Body: { repositoryId: string } or { fullName: "owner/repo" }
  */
 export async function POST(request: NextRequest, { params }: RouteParams) {
+  // Require admin authentication for modifying assignments
+  const { error } = await requireApiAdmin();
+  if (error) return error;
+
   const { id: workerId } = await params;
 
   try {
@@ -89,7 +98,15 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
         where: { id: repositoryId },
       });
     } else if (fullName) {
-      const [owner, name] = fullName.split('/');
+      // Validate fullName format (must be "owner/repo")
+      const parts = fullName.split('/');
+      if (parts.length !== 2 || !parts[0] || !parts[1]) {
+        return NextResponse.json(
+          { error: 'fullName must be in format "owner/repo"' },
+          { status: 400 }
+        );
+      }
+      const [owner, name] = parts;
       repository = await prisma.gitHubRepository.findUnique({
         where: { owner_name: { owner, name } },
       });
@@ -156,6 +173,10 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
  * Body: { repositoryId: string } or { fullName: "owner/repo" }
  */
 export async function DELETE(request: NextRequest, { params }: RouteParams) {
+  // Require admin authentication for modifying assignments
+  const { error } = await requireApiAdmin();
+  if (error) return error;
+
   const { id: workerId } = await params;
 
   try {
@@ -169,7 +190,15 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
         where: { id: repositoryId },
       });
     } else if (fullName) {
-      const [owner, name] = fullName.split('/');
+      // Validate fullName format (must be "owner/repo")
+      const parts = fullName.split('/');
+      if (parts.length !== 2 || !parts[0] || !parts[1]) {
+        return NextResponse.json(
+          { error: 'fullName must be in format "owner/repo"' },
+          { status: 400 }
+        );
+      }
+      const [owner, name] = parts;
       repository = await prisma.gitHubRepository.findUnique({
         where: { owner_name: { owner, name } },
       });
