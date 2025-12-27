@@ -57,3 +57,7 @@ coverage/
 
 # Vercel
 .vercel/
+
+# macOS Apple Silicon binary (M1/M2)
+cc-worker-macos-arm64
+cc-worker.config.json

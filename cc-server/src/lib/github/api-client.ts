@@ -124,7 +124,7 @@ export async function getPullRequest(
   title: string;
   body: string | null;
   state: string;
-  user: { login: string };
+  user: { id: number; login: string; type: string };
   head: { sha: string; ref: string };
   base: { ref: string };
   html_url: string;

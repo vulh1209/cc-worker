@@ -1,0 +1,23 @@
+#!/bin/sh
+
+echo "🔍 Running pre-commit checks..."
+
+# Check cc-server TypeScript
+echo "📦 Checking cc-server types..."
+cd cc-server && pnpm exec tsc --noEmit
+if [ $? -ne 0 ]; then
+  echo "❌ cc-server TypeScript check failed!"
+  exit 1
+fi
+cd ..
+
+# Check cc-worker TypeScript
+echo "📦 Checking cc-worker types..."
+cd cc-worker && pnpm exec tsc --noEmit
+if [ $? -ne 0 ]; then
+  echo "❌ cc-worker TypeScript check failed!"
+  exit 1
+fi
+cd ..
+
+echo "✅ All checks passed!"
