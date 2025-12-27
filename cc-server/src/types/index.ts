@@ -21,6 +21,11 @@ export interface WorkerInfo {
   orchestratorConfig: OrchestratorConfig | null;
 }
 
+// Safe worker info for API responses (excludes sensitive fields)
+export interface SafeWorkerInfo extends Omit<WorkerInfo, 'apiKey'> {
+  apiKeyPreview: string;
+}
+
 export interface OrchestratorConfig {
   fallbackMode?: 'queue' | 'fallback' | 'hybrid';
   maxDepth?: number;
