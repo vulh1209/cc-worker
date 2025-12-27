@@ -23,6 +23,15 @@ export function verifyApiKey(apiKey: string, hash: string): boolean {
   return hashApiKey(apiKey) === hash;
 }
 
+// API key preview configuration
+const API_KEY_PREVIEW_LENGTH = 15;
+
+// Get a preview of an API key (first 15 characters + "...")
+// Used to display API keys securely without exposing the full key
+export function getApiKeyPreview(apiKey: string): string {
+  return apiKey.substring(0, API_KEY_PREVIEW_LENGTH) + '...';
+}
+
 // Format relative time
 export function formatRelativeTime(date: Date | null): string {
   if (!date) return 'Never';

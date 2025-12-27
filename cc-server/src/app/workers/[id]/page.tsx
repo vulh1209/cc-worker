@@ -3,7 +3,7 @@ import { notFound, redirect } from 'next/navigation';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { formatRelativeTime, formatDuration } from '@/lib/utils';
+import { formatRelativeTime, formatDuration, getApiKeyPreview } from '@/lib/utils';
 import prisma from '@/lib/prisma';
 import { getSessionUser } from '@/lib/auth';
 import { checkWorkerAccess } from '@/lib/worker-permissions';
@@ -167,7 +167,7 @@ export default async function WorkerDetailPage({ params }: PageProps) {
                 API Key
               </label>
               <p className="font-mono text-sm">
-                {worker.apiKey.substring(0, 15)}...
+                {getApiKeyPreview(worker.apiKey)}
               </p>
             </div>
           </CardContent>

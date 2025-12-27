@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { requireWorkerAccess } from '@/lib/worker-permissions';
+import { getApiKeyPreview } from '@/lib/utils';
 
 interface RouteParams {
   params: Promise<{ id: string }>;
@@ -46,7 +47,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     const { apiKey, apiKeyHash, ...safeWorker } = worker;
     return NextResponse.json({
       ...safeWorker,
-      apiKeyPreview: apiKey.substring(0, 15) + '...',
+      apiKeyPreview: getApiKeyPreview(apiKey),
       isOwner: access.isOwner,
       canDelete: access.isOwner,
       canShare: access.isOwner,
