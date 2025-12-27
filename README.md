@@ -9,6 +9,7 @@
 </p>
 
 <p align="center">
+  <a href="#screenshots">Screenshots</a> •
   <a href="#features">Features</a> •
   <a href="#quick-start">Quick Start</a> •
   <a href="#architecture">Architecture</a> •
@@ -20,6 +21,22 @@
   <img src="https://img.shields.io/github/license/vulh1209/cc-worker?style=flat-square" alt="License">
   <img src="https://img.shields.io/badge/node-%3E%3D18.0.0-brightgreen?style=flat-square" alt="Node Version">
   <img src="https://img.shields.io/badge/PRs-welcome-brightgreen.svg?style=flat-square" alt="PRs Welcome">
+</p>
+
+---
+
+## Screenshots
+
+<p align="center">
+  <img src="docs/dashboard.png" alt="Dashboard" width="100%">
+  <br>
+  <em>Real-time Dashboard - Monitor tasks and workers</em>
+</p>
+
+<p align="center">
+  <img src="docs/worker.png" alt="Worker" width="100%">
+  <br>
+  <em>Worker Terminal - Claude Code execution logs</em>
 </p>
 
 ---
