@@ -10,22 +10,29 @@ CC-Worker is a distributed system for running Claude Code tasks remotely:
 
 ## Commands
 
+This project uses **pnpm** as the package manager with workspace support.
+
+### Root (monorepo)
+```bash
+pnpm install         # Install all dependencies for both packages
+```
+
 ### Server (cc-server/)
 ```bash
-npm run dev          # Start dev server with hot reload (tsx watch server.ts)
-npm run build        # Build Next.js for production
-npm start            # Start production server
-npm run db:push      # Push schema to database (use during dev)
-npm run db:migrate   # Run migrations (use for production)
-npm run db:studio    # Open Prisma Studio GUI
+pnpm run dev          # Start dev server with hot reload (tsx watch server.ts)
+pnpm run build        # Build Next.js for production
+pnpm start            # Start production server
+pnpm run db:push      # Push schema to database (use during dev)
+pnpm run db:migrate   # Run migrations (use for production)
+pnpm run db:studio    # Open Prisma Studio GUI
 ```
 
 ### Worker (cc-worker/)
 ```bash
-npm run dev               # Start worker in dev mode (tsx watch)
-npm run build             # Compile TypeScript
-npm run build:binary      # Build for current platform
-npm run build:binary:all  # Build for macOS x64/arm64, Windows, Linux
+pnpm run dev               # Start worker in dev mode (tsx watch)
+pnpm run build             # Compile TypeScript
+pnpm run build:binary      # Build for current platform
+pnpm run build:binary:all  # Build for macOS x64/arm64, Windows, Linux
 ```
 
 ## Architecture

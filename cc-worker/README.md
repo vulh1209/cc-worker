@@ -7,7 +7,11 @@ Distributed Claude Code Worker Bot - connects to a central server and executes C
 ### Installation
 
 ```bash
-npm install
+# From the root directory (recommended - uses workspace)
+pnpm install
+
+# Or from cc-worker directory
+cd cc-worker && pnpm install
 ```
 
 ### Configuration
@@ -43,20 +47,20 @@ The worker will automatically use your CLI session - no API key needed!
 ### Run in Development
 
 ```bash
-npm run dev
+pnpm run dev
 ```
 
 ### Build & Run
 
 ```bash
-npm run build
-npm start
+pnpm run build
+pnpm start
 ```
 
 ### Build Standalone Binary
 
 ```bash
-npm run build:binary
+pnpm run build:binary
 ```
 
 This creates binaries in the `binaries/` folder for:

@@ -12,7 +12,11 @@ Central server for CC-Worker distributed Claude Code system. Provides a dashboar
 ### Installation
 
 ```bash
-npm install
+# From the root directory (recommended - uses workspace)
+pnpm install
+
+# Or from cc-server directory
+cd cc-server && pnpm install
 ```
 
 ### Configuration
@@ -28,19 +32,19 @@ PORT=3000
 
 ```bash
 # Push schema to database
-npm run db:push
+pnpm run db:push
 
 # Generate Prisma client
-npm run db:generate
+pnpm run db:generate
 
 # (Optional) Open Prisma Studio
-npm run db:studio
+pnpm run db:studio
 ```
 
 ### Run in Development
 
 ```bash
-npm run dev
+pnpm run dev
 ```
 
 Open [http://localhost:3000](http://localhost:3000) in your browser.
@@ -48,8 +52,8 @@ Open [http://localhost:3000](http://localhost:3000) in your browser.
 ### Build & Run
 
 ```bash
-npm run build
-npm start
+pnpm run build
+pnpm start
 ```
 
 ## Features

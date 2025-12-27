@@ -82,12 +82,18 @@ cd cc-worker
 ### 2. Setup the Server
 
 ```bash
+# Install pnpm if not already installed
+npm install -g pnpm
+
+# Install all dependencies (from root)
+pnpm install
+
+# Setup server
 cd cc-server
-npm install
 cp .env.example .env
 # Edit .env with your DATABASE_URL
-npm run db:push
-npm run dev
+pnpm run db:push
+pnpm run dev
 ```
 
 Server will start at `http://localhost:3000`
@@ -133,10 +139,9 @@ Forwarding    https://abc123.ngrok-free.app -> http://localhost:3000
 
 ```bash
 cd cc-worker
-npm install
 cp .env.example .env
 # Edit .env with server URL and API key
-npm run dev
+pnpm run dev
 ```
 
 ## Remote Workers
@@ -157,7 +162,7 @@ When your server runs locally and workers are on remote machines:
 **On the server machine:**
 ```bash
 # Start cc-server
-cd cc-server && npm run dev
+cd cc-server && pnpm run dev
 
 # In another terminal, start ngrok
 ngrok http 3000
@@ -173,7 +178,7 @@ export CC_WORKER_NAME=remote-worker-1
 export CC_WORKING_DIR=/path/to/workspace
 
 # Start worker
-cd cc-worker && npm run dev
+cd cc-worker && pnpm run dev
 ```
 
 ### Configuration File
