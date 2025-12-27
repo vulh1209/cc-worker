@@ -83,7 +83,16 @@ export class TaskQueue {
         // Find target worker
         let targetWorker = null;
 
-        if (shouldOrchestrate) {
+        // PR_REVIEW tasks must go to their pre-assigned worker
+        if (taskType === 'PR_REVIEW' && task.workerId) {
+          // Only assign if the specific worker is online
+          targetWorker = onlineWorkers.find((w) => w.id === task.workerId);
+          if (!targetWorker) {
+            // Worker not online, skip and wait
+            console.log(`[TaskQueue] PR_REVIEW task ${task.id} waiting for worker ${task.workerId}`);
+            continue;
+          }
+        } else if (shouldOrchestrate) {
           // Route REGULAR tasks to orchestrator for analysis
           targetWorker = orchestrator;
         } else if (task.workerId) {

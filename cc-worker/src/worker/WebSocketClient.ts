@@ -140,10 +140,14 @@ export class WebSocketClient extends EventEmitter {
       os: systemInfo.os,
       hostname: systemInfo.hostname,
       isOrchestrator: this.config.isOrchestrator,
+      assignedRepos: this.config.assignedRepos,
     });
 
     const mode = this.config.isOrchestrator ? ' (orchestrator)' : '';
-    logger.info(`Registered as "${this.config.workerName}"${mode}`);
+    const repos = this.config.assignedRepos?.length
+      ? ` [repos: ${this.config.assignedRepos.join(', ')}]`
+      : '';
+    logger.info(`Registered as "${this.config.workerName}"${mode}${repos}`);
   }
 
   private startHeartbeat(): void {

@@ -16,6 +16,7 @@ import type {
 } from '../types';
 import prisma from './prisma';
 import { getOrchestrationHandler } from './orchestration-handler';
+import { handlePRReviewCompleted, handlePRReviewFailed } from './pr-review-handler';
 
 type WorkerSocket = Socket<WorkerToServerEvents, ServerToWorkerEvents>;
 type BrowserSocket = Socket<BrowserToServerEvents, ServerToBrowserEvents>;
@@ -27,14 +28,22 @@ interface ConnectedWorker {
   lastHeartbeat: Date;
 }
 
+// Heartbeat timeout: mark worker offline if no heartbeat for 90 seconds
+// (Worker sends heartbeat every 30s, so 90s allows for 2 missed heartbeats)
+const HEARTBEAT_TIMEOUT_MS = 90_000;
+const HEARTBEAT_CHECK_INTERVAL_MS = 30_000;
+
 export class WorkerManager {
   private io: SocketIOServer;
   private workers: Map<string, ConnectedWorker> = new Map(); // socketId -> worker
   private workerIdToSocket: Map<string, string> = new Map(); // workerId -> socketId
+  private heartbeatCheckInterval: NodeJS.Timeout | null = null;
 
   constructor(io: SocketIOServer) {
     this.io = io;
     this.setupEventHandlers();
+    this.startHeartbeatMonitor();
+    this.cleanupStaleWorkersOnStartup();
   }
 
   private setupEventHandlers(): void {
@@ -154,7 +163,16 @@ export class WorkerManager {
       // Broadcast worker update to dashboard
       this.io.emit('worker:updated', updatedWorker);
 
-      console.log(`[Worker] Registered: ${worker.name} (${worker.id})`);
+      // Handle assigned repos from worker config - sync to WorkerRepository table
+      const configRepos = data.assignedRepos || [];
+      if (configRepos.length > 0) {
+        await this.syncWorkerRepoAssignments(worker.id, configRepos);
+      }
+
+      const repoInfo = configRepos.length
+        ? ` [repos: ${configRepos.join(', ')}]`
+        : '';
+      console.log(`[Worker] Registered: ${worker.name} (${worker.id})${repoInfo}`);
     } catch (error) {
       console.error('[Worker] Registration error:', error);
       socket.emit('error', { message: 'Registration failed' });
@@ -259,6 +277,20 @@ export class WorkerManager {
       this.io.to(`task:${data.taskId}`).emit('task:updated', task);
       this.io.emit('worker:updated', { id: worker.workerId, status: 'ONLINE' });
 
+      // Handle PR review completion if this is a PR_REVIEW task
+      if (task.taskType === 'PR_REVIEW') {
+        try {
+          const result = await handlePRReviewCompleted(data.taskId, data.result);
+          if (result.success) {
+            console.log(`[Task] PR review posted: ${result.commentUrl}`);
+          } else {
+            console.error(`[Task] PR review post failed: ${result.error}`);
+          }
+        } catch (error) {
+          console.error('[Task] PR review handling error:', error);
+        }
+      }
+
       console.log(`[Task] Completed: ${data.taskId} (${data.duration}ms, session: ${data.sessionId || 'none'})`);
     } catch (error) {
       console.error('[Task] Complete error:', error);
@@ -291,6 +323,15 @@ export class WorkerManager {
       // Broadcast updates
       this.io.to(`task:${data.taskId}`).emit('task:updated', task);
       this.io.emit('worker:updated', { id: worker.workerId, status: 'ONLINE' });
+
+      // Handle PR review failure if this is a PR_REVIEW task
+      if (task.taskType === 'PR_REVIEW') {
+        try {
+          await handlePRReviewFailed(data.taskId, data.error);
+        } catch (error) {
+          console.error('[Task] PR review failure handling error:', error);
+        }
+      }
 
       console.log(`[Task] Failed: ${data.taskId} - ${data.error}`);
     } catch (error) {
@@ -439,6 +480,126 @@ export class WorkerManager {
   // Get connected worker count
   getConnectedCount(): number {
     return this.workers.size;
+  }
+
+  // Start heartbeat monitor to detect stale workers
+  private startHeartbeatMonitor(): void {
+    this.heartbeatCheckInterval = setInterval(async () => {
+      const now = Date.now();
+      const staleWorkers: Array<{ socketId: string; worker: ConnectedWorker }> = [];
+
+      // Find workers with stale heartbeats
+      this.workers.forEach((worker, socketId) => {
+        const timeSinceHeartbeat = now - worker.lastHeartbeat.getTime();
+        if (timeSinceHeartbeat > HEARTBEAT_TIMEOUT_MS) {
+          staleWorkers.push({ socketId, worker });
+        }
+      });
+
+      // Handle stale workers
+      for (const { socketId, worker } of staleWorkers) {
+        console.log(`[Worker] Heartbeat timeout: ${worker.name} (last heartbeat ${Math.round((now - worker.lastHeartbeat.getTime()) / 1000)}s ago)`);
+
+        try {
+          // Update database
+          const updatedWorker = await prisma.worker.update({
+            where: { id: worker.workerId },
+            data: { status: 'OFFLINE' },
+          });
+
+          // Broadcast worker update
+          this.io.emit('worker:updated', updatedWorker);
+
+          // Force disconnect the socket
+          worker.socket.disconnect(true);
+
+          // Clean up maps
+          this.workers.delete(socketId);
+          this.workerIdToSocket.delete(worker.workerId);
+        } catch (error) {
+          console.error(`[Worker] Failed to mark ${worker.name} as offline:`, error);
+        }
+      }
+    }, HEARTBEAT_CHECK_INTERVAL_MS);
+
+    console.log('[WorkerManager] Heartbeat monitor started');
+  }
+
+  // Clean up workers that were left ONLINE from previous server runs
+  private async cleanupStaleWorkersOnStartup(): Promise<void> {
+    try {
+      const result = await prisma.worker.updateMany({
+        where: { status: { in: ['ONLINE', 'BUSY'] } },
+        data: { status: 'OFFLINE' },
+      });
+
+      if (result.count > 0) {
+        console.log(`[WorkerManager] Cleaned up ${result.count} stale worker(s) on startup`);
+      }
+    } catch (error) {
+      console.error('[WorkerManager] Failed to cleanup stale workers:', error);
+    }
+  }
+
+  // Stop heartbeat monitor (for cleanup)
+  stopHeartbeatMonitor(): void {
+    if (this.heartbeatCheckInterval) {
+      clearInterval(this.heartbeatCheckInterval);
+      this.heartbeatCheckInterval = null;
+      console.log('[WorkerManager] Heartbeat monitor stopped');
+    }
+  }
+
+  /**
+   * Sync worker's GitHub repository assignments
+   * Creates WorkerRepository records for repos that exist in DB
+   * Uses batch queries to avoid N+1 problem
+   */
+  private async syncWorkerRepoAssignments(
+    workerId: string,
+    repoFullNames: string[]
+  ): Promise<void> {
+    if (repoFullNames.length === 0) return;
+
+    try {
+      // Batch fetch all repos in a single query
+      const repos = await prisma.gitHubRepository.findMany({
+        where: { fullName: { in: repoFullNames } },
+        select: { id: true, fullName: true },
+      });
+
+      // Log repos that weren't found
+      const foundFullNames = new Set(repos.map((r) => r.fullName));
+      const notFound = repoFullNames.filter((name) => !foundFullNames.has(name));
+      if (notFound.length > 0) {
+        console.log(`[Worker] Repos not found in DB, skipping: ${notFound.join(', ')}`);
+      }
+
+      if (repos.length === 0) return;
+
+      // Batch upsert all assignments in a transaction
+      await prisma.$transaction(
+        repos.map((repo) =>
+          prisma.workerRepository.upsert({
+            where: {
+              workerId_repositoryId: {
+                workerId,
+                repositoryId: repo.id,
+              },
+            },
+            create: {
+              workerId,
+              repositoryId: repo.id,
+            },
+            update: {},
+          })
+        )
+      );
+
+      console.log(`[Worker] Assigned to ${repos.length} repo(s): ${repos.map((r) => r.fullName).join(', ')}`);
+    } catch (error) {
+      console.error(`[Worker] Failed to sync repo assignments:`, error);
+    }
   }
 }
 

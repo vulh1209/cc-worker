@@ -18,6 +18,9 @@ const configSchema = z.object({
   heartbeatInterval: z.number().int().min(5000).default(30000),
   // Orchestration settings
   isOrchestrator: z.boolean().default(false).describe('Whether this worker acts as the orchestrator'),
+  // GitHub repository assignments for PR review routing
+  // Format: ["owner/repo", "owner/repo2"] - repos this worker should handle
+  assignedRepos: z.array(z.string()).default([]).describe('GitHub repos this worker is assigned to (e.g., ["owner/repo"])'),
 });
 
 export type WorkerConfig = z.infer<typeof configSchema>;
@@ -105,6 +108,7 @@ export function loadConfig(): WorkerConfig {
   console.log('[Config]   reconnectInterval:', merged.reconnectInterval ?? 5000);
   console.log('[Config]   heartbeatInterval:', merged.heartbeatInterval ?? 30000);
   console.log('[Config]   isOrchestrator:', merged.isOrchestrator ?? false);
+  console.log('[Config]   assignedRepos:', (merged.assignedRepos as string[])?.length ? (merged.assignedRepos as string[]).join(', ') : '<none>');
   if (loadedFrom) {
     console.log('[Config]   (loaded from file:', loadedFrom + ')');
   }

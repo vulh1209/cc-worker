@@ -2,7 +2,7 @@
 
 export type WorkerStatus = 'ONLINE' | 'OFFLINE' | 'BUSY';
 export type TaskStatus = 'PENDING' | 'ORCHESTRATING' | 'RUNNING' | 'COMPLETED' | 'FAILED' | 'CANCELLED';
-export type TaskType = 'REGULAR' | 'ORCHESTRATION_ANALYSIS' | 'SUBTASK';
+export type TaskType = 'REGULAR' | 'ORCHESTRATION_ANALYSIS' | 'SUBTASK' | 'PR_REVIEW';
 export type LogType = 'SYSTEM' | 'TEXT' | 'THINKING' | 'TOOL_USE' | 'TOOL_RESULT' | 'ERROR';
 
 export interface WorkerInfo {
@@ -99,6 +99,8 @@ export interface TaskAssignEvent {
   taskType?: TaskType;
   availableWorkers?: WorkerRoutingInfo[];  // For orchestrator routing decisions
   orchestrationDepth?: number;
+  // PR Review fields
+  prReviewContext?: PRReviewContext;
 }
 
 export interface TaskCancelEvent {
@@ -112,6 +114,7 @@ export interface WorkerRegisterEvent {
   os: string;
   hostname: string;
   isOrchestrator?: boolean;  // Worker can self-register as orchestrator
+  assignedRepos?: string[];  // GitHub repos worker is assigned to (e.g., ["owner/repo"])
 }
 
 export interface WorkerHeartbeatEvent {
@@ -172,4 +175,66 @@ export interface BrowserToServerEvents {
   'subscribe:task': (taskId: string) => void;
   'unsubscribe:worker': (workerId: string) => void;
   'unsubscribe:task': (taskId: string) => void;
+}
+
+// ============================================================================
+// PR Review Types
+// ============================================================================
+
+export interface PRReviewContext {
+  repository: {
+    owner: string;
+    name: string;
+    defaultBranch: string;
+  };
+  pullRequest: {
+    number: number;
+    title: string;
+    description: string | null;
+    author: string;
+    baseBranch: string;
+    headBranch: string;
+    url: string;
+    headSha: string;
+  };
+  files: PRFileChange[];
+  diff: string;
+  installationId: number;
+  reviewGuidelines?: string;
+}
+
+export interface PRFileChange {
+  filename: string;
+  status: 'added' | 'modified' | 'deleted' | 'renamed';
+  additions: number;
+  deletions: number;
+  patch?: string;
+}
+
+export interface PRReviewResult {
+  summary: string;
+  overallAssessment: 'approve' | 'request_changes' | 'comment';
+  overallComment: string;
+  riskLevel: 'low' | 'medium' | 'high';
+  categories: {
+    security: PRCategoryScore;
+    performance: PRCategoryScore;
+    codeQuality: PRCategoryScore;
+    testCoverage: PRCategoryScore;
+  };
+  comments: PRLineComment[];
+  suggestions: string[];
+}
+
+export interface PRCategoryScore {
+  score: number;  // 1-5
+  issues: string[];
+}
+
+export interface PRLineComment {
+  file: string;
+  line: number;
+  side: 'LEFT' | 'RIGHT';  // LEFT for deletions, RIGHT for additions
+  body: string;
+  severity: 'suggestion' | 'warning' | 'blocker';
 }
