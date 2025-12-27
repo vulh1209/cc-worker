@@ -33,6 +33,9 @@ model Worker {
   owner      User?         @relation("OwnedWorkers", fields: [ownerId], references: [id])
   sharedWith WorkerShare[]
 
+  // GitHub repository assignments (for PR review routing)
+  assignedRepos WorkerRepository[]
+
   @@index([status])
   @@index([lastSeen])
   @@index([isOrchestrator])
@@ -68,6 +71,9 @@ model Task {
   orchestratedSubtasks Task[]   @relation("Orchestration")
   orchestrationDepth   Int      @default(0) // Prevents infinite decomposition
   routingDecision      Json?    // Stores orchestrator's decision
+
+  // GitHub PR Review relation
+  prReview             GitHubPRReview?
 
   @@index([status])
   @@index([workerId])
@@ -109,6 +115,7 @@ enum TaskType {
   REGULAR               // Normal tasks - go through orchestration
   ORCHESTRATION_ANALYSIS // Internal orchestrator analysis - never re-orchestrated
   SUBTASK               // Decomposed subtasks - skip orchestration
+  PR_REVIEW             // GitHub PR review tasks
 }
 
 enum LogType {
@@ -210,4 +217,93 @@ model TaskMetric {
 
   @@unique([date, workerId])
   @@index([date])
+}
+
+// ============================================================================
+// GitHub Integration
+// ============================================================================
+
+// GitHub App installation tracking
+model GitHubInstallation {
+  id              String    @id @default(cuid())
+  installationId  Int       @unique
+  accountLogin    String    // org or user name
+  accountType     String    // "User" | "Organization"
+  accountId       Int
+  accessToken     String?   @db.Text  // Encrypted installation access token
+  tokenExpiresAt  DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  repositories    GitHubRepository[]
+
+  @@index([accountLogin])
+}
+
+// Repository configuration for PR reviews
+model GitHubRepository {
+  id                String   @id @default(cuid())
+  installationId    String
+  installation      GitHubInstallation @relation(fields: [installationId], references: [id], onDelete: Cascade)
+  repoId            Int      @unique
+  owner             String
+  name              String
+  fullName          String   // "owner/name"
+  autoReviewEnabled Boolean  @default(true)
+  reviewOnMention   Boolean  @default(true)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  reviews           GitHubPRReview[]
+  assignedWorkers   WorkerRepository[]
+
+  @@unique([owner, name])
+  @@index([fullName])
+  @@index([autoReviewEnabled])
+}
+
+// Worker ↔ Repository assignment (many-to-many)
+// Each worker can be assigned to multiple repos
+// Each repo can have multiple workers assigned
+model WorkerRepository {
+  id           String   @id @default(cuid())
+  workerId     String
+  worker       Worker   @relation(fields: [workerId], references: [id], onDelete: Cascade)
+  repositoryId String
+  repository   GitHubRepository @relation(fields: [repositoryId], references: [id], onDelete: Cascade)
+  assignedAt   DateTime @default(now())
+  assignedBy   String?  // User ID who made the assignment
+
+  @@unique([workerId, repositoryId])
+  @@index([workerId])
+  @@index([repositoryId])
+}
+
+// Track PR reviews to avoid duplicates and enable re-reviews
+model GitHubPRReview {
+  id           String         @id @default(cuid())
+  repositoryId String
+  repository   GitHubRepository @relation(fields: [repositoryId], references: [id], onDelete: Cascade)
+  prNumber     Int
+  prTitle      String
+  prAuthor     String
+  headSha      String         // Commit SHA reviewed
+  taskId       String?        @unique
+  task         Task?          @relation(fields: [taskId], references: [id])
+  status       PRReviewStatus @default(PENDING)
+  commentId    Int?           // GitHub comment ID for updates
+  triggeredBy  String         // "auto" | "mention:username"
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+
+  @@unique([repositoryId, prNumber, headSha])
+  @@index([taskId])
+  @@index([status])
+}
+
+enum PRReviewStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+  FAILED
 }

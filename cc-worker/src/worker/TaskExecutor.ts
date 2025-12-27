@@ -79,6 +79,7 @@ export class TaskExecutor {
         allowedTools: ['Read', 'Write', 'Edit', 'Bash', 'Glob', 'Grep', 'LS'],
         cwd,
         maxTurns: 50, // Limit to prevent runaway tasks
+        dangerouslySkipPermissions: true, // Skip permission prompts for headless worker execution
         ...(this.config.cliPath && { pathToClaudeCodeExecutable: this.config.cliPath }),
       };
 

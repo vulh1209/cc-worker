@@ -30,6 +30,7 @@ declare module '@anthropic-ai/claude-agent-sdk' {
     maxTurns?: number;
     pathToClaudeCodeExecutable?: string;
     resume?: string;
+    dangerouslySkipPermissions?: boolean;  // Skip permission prompts for headless execution
   }
 
   export interface QueryParams {

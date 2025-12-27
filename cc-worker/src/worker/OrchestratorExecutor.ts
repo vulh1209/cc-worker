@@ -69,6 +69,7 @@ export class OrchestratorExecutor {
           allowedTools: [], // No tools needed for orchestration analysis
           cwd,
           maxTurns: 1, // Single turn for analysis
+          dangerouslySkipPermissions: true, // Skip permission prompts for headless worker execution
           ...(this.config.cliPath && { pathToClaudeCodeExecutable: this.config.cliPath }),
         },
       })) {

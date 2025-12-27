@@ -16,6 +16,7 @@ import type {
 } from '../types';
 import prisma from './prisma';
 import { getOrchestrationHandler } from './orchestration-handler';
+import { handlePRReviewCompleted, handlePRReviewFailed } from './pr-review-handler';
 
 type WorkerSocket = Socket<WorkerToServerEvents, ServerToWorkerEvents>;
 type BrowserSocket = Socket<BrowserToServerEvents, ServerToBrowserEvents>;
@@ -259,6 +260,20 @@ export class WorkerManager {
       this.io.to(`task:${data.taskId}`).emit('task:updated', task);
       this.io.emit('worker:updated', { id: worker.workerId, status: 'ONLINE' });
 
+      // Handle PR review completion if this is a PR_REVIEW task
+      if (task.taskType === 'PR_REVIEW') {
+        try {
+          const result = await handlePRReviewCompleted(data.taskId, data.result);
+          if (result.success) {
+            console.log(`[Task] PR review posted: ${result.commentUrl}`);
+          } else {
+            console.error(`[Task] PR review post failed: ${result.error}`);
+          }
+        } catch (error) {
+          console.error('[Task] PR review handling error:', error);
+        }
+      }
+
       console.log(`[Task] Completed: ${data.taskId} (${data.duration}ms, session: ${data.sessionId || 'none'})`);
     } catch (error) {
       console.error('[Task] Complete error:', error);
@@ -291,6 +306,15 @@ export class WorkerManager {
       // Broadcast updates
       this.io.to(`task:${data.taskId}`).emit('task:updated', task);
       this.io.emit('worker:updated', { id: worker.workerId, status: 'ONLINE' });
+
+      // Handle PR review failure if this is a PR_REVIEW task
+      if (task.taskType === 'PR_REVIEW') {
+        try {
+          await handlePRReviewFailed(data.taskId, data.error);
+        } catch (error) {
+          console.error('[Task] PR review failure handling error:', error);
+        }
+      }
 
       console.log(`[Task] Failed: ${data.taskId} - ${data.error}`);
     } catch (error) {
