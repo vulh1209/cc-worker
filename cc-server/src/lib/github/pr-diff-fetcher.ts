@@ -82,16 +82,39 @@ export async function fetchPRDiff(
   let currentSize = 0;
   const includedFiles: PRDiffFile[] = [];
 
-  for (const file of textFiles) {
+  for (let i = 0; i < textFiles.length; i++) {
+    const file = textFiles[i];
     const fileHeader = `--- a/${file.filename}\n+++ b/${file.filename}\n`;
     const fileDiff = fileHeader + (file.patch || '');
 
     // Check if adding this file would exceed limit
     if (currentSize + fileDiff.length > MAX_DIFF_SIZE) {
-      // Add truncation notice
-      diffContent +=
-        '\n\n... [DIFF TRUNCATED - Remaining files omitted due to size limit] ...\n';
-      diffContent += `Remaining files: ${textFiles.length - includedFiles.length}\n`;
+      // Always include at least the first file (truncated if necessary)
+      if (i === 0) {
+        // First file exceeds limit - include truncated version
+        const truncatedPatch = file.patch
+          ? file.patch.slice(0, MAX_DIFF_SIZE - fileHeader.length - 100) +
+            '\n... [FILE TRUNCATED - Content exceeds size limit] ...'
+          : '';
+        diffContent += fileHeader + truncatedPatch + '\n\n';
+
+        includedFiles.push({
+          filename: file.filename,
+          status: file.status as PRDiffFile['status'],
+          additions: file.additions,
+          deletions: file.deletions,
+          patch: truncatedPatch,
+          previousFilename: file.previous_filename,
+        });
+      }
+
+      // Add truncation notice for remaining files
+      const remainingCount = textFiles.length - includedFiles.length;
+      if (remainingCount > 0) {
+        diffContent +=
+          '\n\n... [DIFF TRUNCATED - Remaining files omitted due to size limit] ...\n';
+        diffContent += `Remaining files: ${remainingCount}\n`;
+      }
       break;
     }
 

@@ -71,7 +71,7 @@ export const createMockPrismaClient = (): PrismaClient => {
       delete: vi.fn(),
       upsert: vi.fn(),
     },
-    $transaction: vi.fn((callback) => callback({
+    $transaction: vi.fn((callback: (tx: unknown) => Promise<unknown>) => callback({
       task: {
         create: vi.fn(),
         update: vi.fn(),

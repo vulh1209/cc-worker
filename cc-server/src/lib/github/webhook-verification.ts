@@ -8,6 +8,14 @@
 import { createHmac, timingSafeEqual } from 'crypto';
 
 const WEBHOOK_SECRET = process.env.GITHUB_WEBHOOK_SECRET;
+const NODE_ENV = process.env.NODE_ENV || 'development';
+
+/**
+ * Check if we're in production environment
+ */
+function isProduction(): boolean {
+  return NODE_ENV === 'production';
+}
 
 /**
  * Verify the signature of a GitHub webhook payload
@@ -56,4 +64,17 @@ export function verifyWebhookSignature(
  */
 export function isWebhookVerificationConfigured(): boolean {
   return Boolean(WEBHOOK_SECRET);
+}
+
+/**
+ * Check if webhook verification should be required
+ * In production, verification is always required (fail-closed)
+ * In development, it's optional to ease local testing
+ */
+export function shouldRequireWebhookVerification(): boolean {
+  if (isProduction()) {
+    return true; // Always require in production (fail-closed)
+  }
+  // In development, only require if configured
+  return isWebhookVerificationConfigured();
 }

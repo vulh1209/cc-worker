@@ -46,7 +46,7 @@ vi.mock('../../prisma', () => ({
       delete: vi.fn(),
       upsert: vi.fn(),
     },
-    $transaction: vi.fn((callback) => callback({
+    $transaction: vi.fn((callback: (tx: unknown) => Promise<unknown>) => callback({
       task: {
         create: vi.fn(),
         update: vi.fn(),
@@ -94,10 +94,12 @@ import {
   handlePullRequestOpened,
   handleIssueComment,
   handleInstallation,
-  type PullRequestWebhookPayload,
-  type IssueCommentWebhookPayload,
-  type InstallationWebhookPayload,
 } from '../webhook-handlers';
+import type {
+  ValidatedPullRequestPayload as PullRequestWebhookPayload,
+  ValidatedIssueCommentPayload as IssueCommentWebhookPayload,
+  ValidatedInstallationPayload as InstallationWebhookPayload,
+} from '../webhook-schemas';
 
 describe('GitHub Webhook Handlers', () => {
   let mockPrisma: any;

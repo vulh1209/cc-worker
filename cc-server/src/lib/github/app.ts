@@ -12,6 +12,10 @@ import prisma from '../prisma';
 const GITHUB_APP_ID = process.env.GITHUB_APP_ID;
 const GITHUB_APP_PRIVATE_KEY = process.env.GITHUB_APP_PRIVATE_KEY;
 
+// Token refresh mutex to prevent race conditions
+// Maps installationId to pending token refresh promise
+const tokenRefreshLocks = new Map<number, Promise<string>>();
+
 /**
  * Generate a JWT for GitHub App authentication
  * JWTs are valid for 10 minutes max
@@ -44,10 +48,20 @@ export async function generateAppJWT(): Promise<string> {
 
 /**
  * Get an installation access token for a GitHub App installation
- * Tokens are cached in the database and refreshed when expired
+ * Tokens are cached in the database and refreshed when expired.
+ * Uses a mutex pattern to prevent concurrent refresh requests.
  */
 export async function getInstallationAccessToken(installationId: number): Promise<string> {
-  // Check cached token
+  // IMPORTANT: Check lock FIRST before any database query
+  // This prevents race condition where multiple requests see expired token
+  // and all try to refresh simultaneously
+  const existingRefresh = tokenRefreshLocks.get(installationId);
+  if (existingRefresh) {
+    console.debug(`[GitHub App] Waiting for existing token refresh for installation ${installationId}`);
+    return existingRefresh;
+  }
+
+  // Check cached token in database
   const installation = await prisma.gitHubInstallation.findUnique({
     where: { installationId },
   });
@@ -60,6 +74,36 @@ export async function getInstallationAccessToken(installationId: number): Promis
       return installation.accessToken;
     }
   }
+
+  // Double-check lock after DB query (another request might have started refresh)
+  const refreshStartedDuringQuery = tokenRefreshLocks.get(installationId);
+  if (refreshStartedDuringQuery) {
+    console.debug(`[GitHub App] Refresh started during DB query for installation ${installationId}`);
+    return refreshStartedDuringQuery;
+  }
+
+  // Start a new token refresh and store the promise
+  const refreshPromise = refreshInstallationToken(installationId, installation !== null);
+
+  tokenRefreshLocks.set(installationId, refreshPromise);
+
+  try {
+    const token = await refreshPromise;
+    return token;
+  } finally {
+    // Clean up the lock after the refresh completes (success or failure)
+    tokenRefreshLocks.delete(installationId);
+  }
+}
+
+/**
+ * Internal function to refresh the installation access token
+ */
+async function refreshInstallationToken(
+  installationId: number,
+  shouldUpdateDb: boolean
+): Promise<string> {
+  console.debug(`[GitHub App] Refreshing token for installation ${installationId}`);
 
   // Generate new token
   const jwt = await generateAppJWT();
@@ -84,7 +128,7 @@ export async function getInstallationAccessToken(installationId: number): Promis
   const data = await response.json();
 
   // Cache token in database
-  if (installation) {
+  if (shouldUpdateDb) {
     await prisma.gitHubInstallation.update({
       where: { installationId },
       data: {

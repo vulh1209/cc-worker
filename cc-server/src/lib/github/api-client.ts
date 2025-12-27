@@ -60,12 +60,13 @@ export async function postPRComment(
 
 /**
  * Update an existing comment
+ * Note: commentId accepts bigint because GitHub IDs can exceed Number.MAX_SAFE_INTEGER
  */
 export async function updatePRComment(
   installationId: number,
   owner: string,
   repo: string,
-  commentId: number,
+  commentId: number | bigint,
   body: string
 ): Promise<{ id: number; html_url: string }> {
   return githubRequest(
@@ -157,12 +158,13 @@ export async function getRepository(
 
 /**
  * Add a reaction to a comment (useful for acknowledging @mentions)
+ * Note: commentId accepts bigint because GitHub IDs can exceed Number.MAX_SAFE_INTEGER
  */
 export async function addCommentReaction(
   installationId: number,
   owner: string,
   repo: string,
-  commentId: number,
+  commentId: number | bigint,
   reaction: 'eyes' | 'rocket' | '+1' | '-1' | 'laugh' | 'confused' | 'heart' | 'hooray'
 ): Promise<void> {
   await githubRequest(
