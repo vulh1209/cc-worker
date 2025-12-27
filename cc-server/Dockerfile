@@ -40,8 +40,11 @@ COPY --from=builder /app/package.json ./
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/.next ./.next
 COPY --from=builder /app/.server ./.server
-COPY --from=builder /app/public ./public
 COPY --from=builder /app/prisma ./prisma
+
+# Copy public folder if it exists (optional for Next.js)
+RUN mkdir -p ./public
+COPY --from=builder /app/public ./public
 
 EXPOSE 3000
 
