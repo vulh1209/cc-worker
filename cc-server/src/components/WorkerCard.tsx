@@ -13,6 +13,7 @@ interface Worker {
   os: string | null;
   hostname: string | null;
   lastSeen: Date | null;
+  isOrchestrator?: boolean;
   _count?: {
     tasks: number;
   };
@@ -42,6 +43,11 @@ export function WorkerCard({ worker }: WorkerCardProps) {
           <CardTitle className="text-lg flex items-center gap-2">
             <span>{statusIcons[worker.status]}</span>
             {worker.name}
+            {worker.isOrchestrator && (
+              <Badge variant="default" className="ml-1 bg-purple-600 hover:bg-purple-700">
+                🎯 Orchestrator
+              </Badge>
+            )}
           </CardTitle>
           <Badge variant={statusColors[worker.status]}>{worker.status}</Badge>
         </div>

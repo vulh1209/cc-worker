@@ -10,8 +10,12 @@ import type {
   TaskCompletedEvent,
   TaskFailedEvent,
   TaskStartedEvent,
+  OrchestrationDecisionEvent,
+  TaskType,
+  WorkerRoutingInfo,
 } from '@/types';
 import prisma from './prisma';
+import { getOrchestrationHandler } from './orchestration-handler';
 
 type WorkerSocket = Socket<WorkerToServerEvents, ServerToWorkerEvents>;
 type BrowserSocket = Socket<BrowserToServerEvents, ServerToBrowserEvents>;
@@ -64,6 +68,11 @@ export class WorkerManager {
         await this.handleTaskFailed(socket as WorkerSocket, data);
       });
 
+      // Handle orchestration decision from orchestrator worker
+      socket.on('orchestration:decision', async (data: OrchestrationDecisionEvent) => {
+        await this.handleOrchestrationDecision(socket as WorkerSocket, data);
+      });
+
       // Handle browser subscriptions
       socket.on('subscribe:task', (taskId: string) => {
         socket.join(`task:${taskId}`);
@@ -104,6 +113,20 @@ export class WorkerManager {
         return;
       }
 
+      // Check if worker wants to be orchestrator
+      let shouldBeOrchestrator = data.isOrchestrator ?? false;
+
+      // If worker wants to be orchestrator, check if another orchestrator already exists
+      if (shouldBeOrchestrator) {
+        const existingOrchestrator = await prisma.worker.findFirst({
+          where: { isOrchestrator: true, id: { not: worker.id } },
+        });
+        if (existingOrchestrator) {
+          console.log(`[Worker] ${worker.name} wants to be orchestrator, but ${existingOrchestrator.name} is already orchestrator`);
+          shouldBeOrchestrator = false; // Deny, keep existing orchestrator
+        }
+      }
+
       // Update worker info
       const updatedWorker = await prisma.worker.update({
         where: { id: worker.id },
@@ -112,6 +135,7 @@ export class WorkerManager {
           os: data.os,
           hostname: data.hostname,
           lastSeen: new Date(),
+          isOrchestrator: shouldBeOrchestrator,
         },
       });
 
@@ -274,6 +298,43 @@ export class WorkerManager {
     }
   }
 
+  private async handleOrchestrationDecision(
+    socket: WorkerSocket,
+    data: OrchestrationDecisionEvent
+  ): Promise<void> {
+    const worker = this.workers.get(socket.id);
+    if (!worker) {
+      console.error('[Orchestration] Decision from unknown socket');
+      return;
+    }
+
+    try {
+      // Verify this is from an orchestrator
+      const orchestrator = await prisma.worker.findUnique({
+        where: { id: worker.workerId },
+      });
+
+      if (!orchestrator?.isOrchestrator) {
+        console.error(`[Orchestration] Decision from non-orchestrator worker ${worker.name}`);
+        return;
+      }
+
+      // Update worker status back to ONLINE (orchestration analysis done)
+      await prisma.worker.update({
+        where: { id: worker.workerId },
+        data: { status: 'ONLINE' },
+      });
+
+      // Delegate to orchestration handler
+      const handler = getOrchestrationHandler();
+      await handler.handleDecision(data);
+
+      console.log(`[Orchestration] Processed decision from ${worker.name} for task ${data.taskId}`);
+    } catch (error) {
+      console.error('[Orchestration] Decision handling error:', error);
+    }
+  }
+
   private async handleDisconnect(socket: WorkerSocket): Promise<void> {
     const worker = this.workers.get(socket.id);
     if (!worker) return;
@@ -304,7 +365,9 @@ export class WorkerManager {
     taskId: string,
     prompt: string,
     sessionId?: string,      // Session ID to resume (for follow-ups)
-    parentTaskId?: string    // Parent task reference
+    parentTaskId?: string,   // Parent task reference
+    taskType?: TaskType,     // Task type for orchestration
+    orchestrationDepth?: number  // Current orchestration depth
   ): Promise<boolean> {
     const socketId = this.workerIdToSocket.get(workerId);
     if (!socketId) return false;
@@ -312,7 +375,42 @@ export class WorkerManager {
     const worker = this.workers.get(socketId);
     if (!worker) return false;
 
-    worker.socket.emit('task:assign', { taskId, prompt, sessionId, parentTaskId });
+    // If assigning to orchestrator, include available workers info
+    let availableWorkers: WorkerRoutingInfo[] | undefined = undefined;
+    const dbWorker = await prisma.worker.findUnique({ where: { id: workerId } });
+
+    if (dbWorker?.isOrchestrator && taskType === 'REGULAR') {
+      // Get available workers for orchestrator to route to
+      const workers = await prisma.worker.findMany({
+        where: { status: 'ONLINE', isOrchestrator: false },
+        select: {
+          id: true,
+          name: true,
+          status: true,
+          os: true,
+          hostname: true,
+          lastSeen: true,
+        },
+      });
+      availableWorkers = workers.map((w): WorkerRoutingInfo => ({
+        id: w.id,
+        name: w.name,
+        status: w.status,
+        os: w.os,
+        hostname: w.hostname,
+        lastSeen: w.lastSeen || new Date(),
+      }));
+    }
+
+    worker.socket.emit('task:assign', {
+      taskId,
+      prompt,
+      sessionId,
+      parentTaskId,
+      taskType,
+      availableWorkers,
+      orchestrationDepth,
+    });
 
     if (sessionId) {
       console.log(`[Task] Assigned follow-up: ${taskId} (session: ${sessionId}, parent: ${parentTaskId})`);

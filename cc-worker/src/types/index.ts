@@ -1,7 +1,8 @@
 // Shared types between worker and server
 
 export type WorkerStatus = 'ONLINE' | 'OFFLINE' | 'BUSY';
-export type TaskStatus = 'PENDING' | 'RUNNING' | 'COMPLETED' | 'FAILED' | 'CANCELLED';
+export type TaskStatus = 'PENDING' | 'ORCHESTRATING' | 'RUNNING' | 'COMPLETED' | 'FAILED' | 'CANCELLED';
+export type TaskType = 'REGULAR' | 'ORCHESTRATION_ANALYSIS' | 'SUBTASK';
 export type LogType = 'SYSTEM' | 'TEXT' | 'THINKING' | 'TOOL_USE' | 'TOOL_RESULT' | 'ERROR';
 
 export interface WorkerInfo {
@@ -10,6 +11,17 @@ export interface WorkerInfo {
   os: string;
   hostname: string;
   status: WorkerStatus;
+  lastSeen: Date;
+  isOrchestrator?: boolean;
+}
+
+// Lightweight worker info for orchestration routing
+export interface WorkerRoutingInfo {
+  id: string;
+  name: string;
+  status: WorkerStatus;
+  os: string | null;
+  hostname: string | null;
   lastSeen: Date;
 }
 
@@ -38,6 +50,10 @@ export interface TaskAssignEvent {
   prompt: string;
   sessionId?: string;      // Session ID to resume (for follow-ups)
   parentTaskId?: string;   // Parent task reference
+  // Orchestration fields
+  taskType?: TaskType;
+  availableWorkers?: WorkerRoutingInfo[];  // For orchestrator routing decisions
+  orchestrationDepth?: number;
 }
 
 export interface TaskCancelEvent {
@@ -54,6 +70,7 @@ export interface WorkerRegisterEvent {
   name: string;
   os: string;
   hostname: string;
+  isOrchestrator?: boolean;  // Worker can self-register as orchestrator
 }
 
 export interface WorkerHeartbeatEvent {
@@ -99,4 +116,26 @@ export interface WorkerToServerEvents {
   'task:log': (data: TaskLogEvent) => void;
   'task:completed': (data: TaskCompletedEvent) => void;
   'task:failed': (data: TaskFailedEvent) => void;
+  'orchestration:decision': (data: OrchestrationDecisionEvent) => void;
+}
+
+// Orchestration types
+export interface OrchestrationDecision {
+  action: 'route' | 'adjust_priority' | 'decompose';
+  targetWorkerId?: string;
+  newPriority?: number;
+  subtasks?: SubtaskDefinition[];
+  reasoning: string;
+}
+
+export interface SubtaskDefinition {
+  prompt: string;
+  priority: number;
+  preferredWorkerId?: string;
+  estimatedComplexity: 'low' | 'medium' | 'high';
+}
+
+export interface OrchestrationDecisionEvent {
+  taskId: string;
+  decision: OrchestrationDecision;
 }

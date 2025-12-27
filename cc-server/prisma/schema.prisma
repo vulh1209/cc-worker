@@ -24,8 +24,13 @@ model Worker {
   updatedAt   DateTime     @updatedAt
   tasks       Task[]
 
+  // Orchestration fields
+  isOrchestrator     Boolean @default(false)
+  orchestratorConfig Json?   // Stores orchestrator-specific settings
+
   @@index([status])
   @@index([lastSeen])
+  @@index([isOrchestrator])
 }
 
 model Task {
@@ -50,12 +55,22 @@ model Task {
   parentTask    Task?     @relation("TaskChain", fields: [parentTaskId], references: [id])
   followUpTasks Task[]    @relation("TaskChain")
 
+  // Orchestration fields
+  taskType             TaskType @default(REGULAR)
+  orchestratedByTaskId String?  // Reference to parent orchestration task
+  orchestratedByTask   Task?    @relation("Orchestration", fields: [orchestratedByTaskId], references: [id])
+  orchestratedSubtasks Task[]   @relation("Orchestration")
+  orchestrationDepth   Int      @default(0) // Prevents infinite decomposition
+  routingDecision      Json?    // Stores orchestrator's decision
+
   @@index([status])
   @@index([workerId])
   @@index([createdAt])
   @@index([priority, createdAt]) // For queue ordering
   @@index([parentTaskId])
   @@index([sessionId])
+  @@index([taskType])
+  @@index([orchestratedByTaskId])
 }
 
 model TaskLog {
@@ -77,10 +92,17 @@ enum WorkerStatus {
 
 enum TaskStatus {
   PENDING
+  ORCHESTRATING  // Being analyzed by orchestrator
   RUNNING
   COMPLETED
   FAILED
   CANCELLED
+}
+
+enum TaskType {
+  REGULAR               // Normal tasks - go through orchestration
+  ORCHESTRATION_ANALYSIS // Internal orchestrator analysis - never re-orchestrated
+  SUBTASK               // Decomposed subtasks - skip orchestration
 }
 
 enum LogType {

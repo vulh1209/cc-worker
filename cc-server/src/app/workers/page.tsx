@@ -147,12 +147,14 @@ function WorkerGridCard({
     os: string | null;
     hostname: string | null;
     lastSeen: Date | null;
+    isOrchestrator?: boolean;
     _count?: { tasks: number };
   };
   index: number;
 }) {
   const isOnline = worker.status === 'ONLINE';
   const isBusy = worker.status === 'BUSY';
+  const isOrchestrator = worker.isOrchestrator;
 
   return (
     <div
@@ -173,8 +175,13 @@ function WorkerGridCard({
                 }`}
               />
               <div>
-                <h3 className="font-semibold text-foreground group-hover:text-primary transition-colors">
+                <h3 className="font-semibold text-foreground group-hover:text-primary transition-colors flex items-center gap-2">
                   {worker.name}
+                  {isOrchestrator && (
+                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-purple-500/20 text-purple-400 border border-purple-500/30">
+                      🎯 orchestrator
+                    </span>
+                  )}
                 </h3>
                 <p className="text-xs text-muted-foreground">
                   {worker.hostname || 'unknown host'}

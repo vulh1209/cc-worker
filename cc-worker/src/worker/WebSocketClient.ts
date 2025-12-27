@@ -11,6 +11,7 @@ import type {
   TaskFailedEvent,
   TaskStartedEvent,
   WorkerStatus,
+  OrchestrationDecisionEvent,
 } from '../types/index.js';
 import { logger } from '../utils/logger.js';
 import { getSystemInfo } from '../utils/system-info.js';
@@ -138,9 +139,11 @@ export class WebSocketClient extends EventEmitter {
       name: this.config.workerName,
       os: systemInfo.os,
       hostname: systemInfo.hostname,
+      isOrchestrator: this.config.isOrchestrator,
     });
 
-    logger.info(`Registered as "${this.config.workerName}"`);
+    const mode = this.config.isOrchestrator ? ' (orchestrator)' : '';
+    logger.info(`Registered as "${this.config.workerName}"${mode}`);
   }
 
   private startHeartbeat(): void {
@@ -179,6 +182,12 @@ export class WebSocketClient extends EventEmitter {
 
   sendTaskFailed(data: TaskFailedEvent): void {
     this.socket?.emit('task:failed', data);
+  }
+
+  // Orchestration event emitter
+  sendOrchestrationDecision(data: OrchestrationDecisionEvent): void {
+    this.socket?.emit('orchestration:decision', data);
+    logger.info(`[Orchestration] Sent decision for task ${data.taskId}: ${data.decision.action}`);
   }
 
   updateStatus(status: WorkerStatus): void {

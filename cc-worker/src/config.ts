@@ -16,6 +16,8 @@ const configSchema = z.object({
   maxConcurrentTasks: z.number().int().min(1).max(5).default(1),
   reconnectInterval: z.number().int().min(1000).default(5000),
   heartbeatInterval: z.number().int().min(5000).default(30000),
+  // Orchestration settings
+  isOrchestrator: z.boolean().default(false).describe('Whether this worker acts as the orchestrator'),
 });
 
 export type WorkerConfig = z.infer<typeof configSchema>;
@@ -61,6 +63,7 @@ function loadConfigFromEnv(): Partial<WorkerConfig> {
     heartbeatInterval: process.env.CC_HEARTBEAT_INTERVAL
       ? parseInt(process.env.CC_HEARTBEAT_INTERVAL, 10)
       : undefined,
+    isOrchestrator: process.env.CC_IS_ORCHESTRATOR === 'true',
   };
 }
 
@@ -101,6 +104,7 @@ export function loadConfig(): WorkerConfig {
   console.log('[Config]   maxConcurrentTasks:', merged.maxConcurrentTasks ?? 1);
   console.log('[Config]   reconnectInterval:', merged.reconnectInterval ?? 5000);
   console.log('[Config]   heartbeatInterval:', merged.heartbeatInterval ?? 30000);
+  console.log('[Config]   isOrchestrator:', merged.isOrchestrator ?? false);
   if (loadedFrom) {
     console.log('[Config]   (loaded from file:', loadedFrom + ')');
   }
