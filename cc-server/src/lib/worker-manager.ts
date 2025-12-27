@@ -28,14 +28,22 @@ interface ConnectedWorker {
   lastHeartbeat: Date;
 }
 
+// Heartbeat timeout: mark worker offline if no heartbeat for 90 seconds
+// (Worker sends heartbeat every 30s, so 90s allows for 2 missed heartbeats)
+const HEARTBEAT_TIMEOUT_MS = 90_000;
+const HEARTBEAT_CHECK_INTERVAL_MS = 30_000;
+
 export class WorkerManager {
   private io: SocketIOServer;
   private workers: Map<string, ConnectedWorker> = new Map(); // socketId -> worker
   private workerIdToSocket: Map<string, string> = new Map(); // workerId -> socketId
+  private heartbeatCheckInterval: NodeJS.Timeout | null = null;
 
   constructor(io: SocketIOServer) {
     this.io = io;
     this.setupEventHandlers();
+    this.startHeartbeatMonitor();
+    this.cleanupStaleWorkersOnStartup();
   }
 
   private setupEventHandlers(): void {
@@ -463,6 +471,74 @@ export class WorkerManager {
   // Get connected worker count
   getConnectedCount(): number {
     return this.workers.size;
+  }
+
+  // Start heartbeat monitor to detect stale workers
+  private startHeartbeatMonitor(): void {
+    this.heartbeatCheckInterval = setInterval(async () => {
+      const now = Date.now();
+      const staleWorkers: Array<{ socketId: string; worker: ConnectedWorker }> = [];
+
+      // Find workers with stale heartbeats
+      this.workers.forEach((worker, socketId) => {
+        const timeSinceHeartbeat = now - worker.lastHeartbeat.getTime();
+        if (timeSinceHeartbeat > HEARTBEAT_TIMEOUT_MS) {
+          staleWorkers.push({ socketId, worker });
+        }
+      });
+
+      // Handle stale workers
+      for (const { socketId, worker } of staleWorkers) {
+        console.log(`[Worker] Heartbeat timeout: ${worker.name} (last heartbeat ${Math.round((now - worker.lastHeartbeat.getTime()) / 1000)}s ago)`);
+
+        try {
+          // Update database
+          const updatedWorker = await prisma.worker.update({
+            where: { id: worker.workerId },
+            data: { status: 'OFFLINE' },
+          });
+
+          // Broadcast worker update
+          this.io.emit('worker:updated', updatedWorker);
+
+          // Force disconnect the socket
+          worker.socket.disconnect(true);
+
+          // Clean up maps
+          this.workers.delete(socketId);
+          this.workerIdToSocket.delete(worker.workerId);
+        } catch (error) {
+          console.error(`[Worker] Failed to mark ${worker.name} as offline:`, error);
+        }
+      }
+    }, HEARTBEAT_CHECK_INTERVAL_MS);
+
+    console.log('[WorkerManager] Heartbeat monitor started');
+  }
+
+  // Clean up workers that were left ONLINE from previous server runs
+  private async cleanupStaleWorkersOnStartup(): Promise<void> {
+    try {
+      const result = await prisma.worker.updateMany({
+        where: { status: { in: ['ONLINE', 'BUSY'] } },
+        data: { status: 'OFFLINE' },
+      });
+
+      if (result.count > 0) {
+        console.log(`[WorkerManager] Cleaned up ${result.count} stale worker(s) on startup`);
+      }
+    } catch (error) {
+      console.error('[WorkerManager] Failed to cleanup stale workers:', error);
+    }
+  }
+
+  // Stop heartbeat monitor (for cleanup)
+  stopHeartbeatMonitor(): void {
+    if (this.heartbeatCheckInterval) {
+      clearInterval(this.heartbeatCheckInterval);
+      this.heartbeatCheckInterval = null;
+      console.log('[WorkerManager] Heartbeat monitor stopped');
+    }
   }
 }
 
