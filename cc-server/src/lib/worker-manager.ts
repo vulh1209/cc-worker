@@ -46,6 +46,29 @@ export class WorkerManager {
     this.cleanupStaleWorkersOnStartup();
   }
 
+  /**
+   * Helper to get connected worker by socket ID
+   * Returns null if worker not found
+   */
+  private getConnectedWorker(socketId: string): ConnectedWorker | null {
+    return this.workers.get(socketId) || null;
+  }
+
+  /**
+   * Helper to update worker status and broadcast the change
+   */
+  private async updateWorkerStatus(
+    workerId: string,
+    status: 'ONLINE' | 'OFFLINE' | 'BUSY'
+  ): Promise<void> {
+    const updatedWorker = await prisma.worker.update({
+      where: { id: workerId },
+      data: { status },
+    });
+
+    this.io.emit('worker:updated', updatedWorker);
+  }
+
   private setupEventHandlers(): void {
     this.io.on('connection', (socket) => {
       console.log(`[Socket] New connection: ${socket.id}`);
@@ -183,7 +206,7 @@ export class WorkerManager {
     socket: WorkerSocket,
     data: WorkerHeartbeatEvent
   ): Promise<void> {
-    const worker = this.workers.get(socket.id);
+    const worker = this.getConnectedWorker(socket.id);
     if (!worker) return;
 
     try {
@@ -205,7 +228,7 @@ export class WorkerManager {
     socket: WorkerSocket,
     data: TaskStartedEvent
   ): Promise<void> {
-    const worker = this.workers.get(socket.id);
+    const worker = this.getConnectedWorker(socket.id);
     if (!worker) return;
 
     try {
@@ -252,7 +275,7 @@ export class WorkerManager {
     socket: WorkerSocket,
     data: TaskCompletedEvent
   ): Promise<void> {
-    const worker = this.workers.get(socket.id);
+    const worker = this.getConnectedWorker(socket.id);
     if (!worker) return;
 
     try {
@@ -267,15 +290,11 @@ export class WorkerManager {
         },
       });
 
-      // Update worker status
-      await prisma.worker.update({
-        where: { id: worker.workerId },
-        data: { status: 'ONLINE' },
-      });
+      // Update worker status and broadcast
+      await this.updateWorkerStatus(worker.workerId, 'ONLINE');
 
-      // Broadcast updates
+      // Broadcast task update
       this.io.to(`task:${data.taskId}`).emit('task:updated', task);
-      this.io.emit('worker:updated', { id: worker.workerId, status: 'ONLINE' });
 
       // Handle PR review completion if this is a PR_REVIEW task
       if (task.taskType === 'PR_REVIEW') {
@@ -301,7 +320,7 @@ export class WorkerManager {
     socket: WorkerSocket,
     data: TaskFailedEvent
   ): Promise<void> {
-    const worker = this.workers.get(socket.id);
+    const worker = this.getConnectedWorker(socket.id);
     if (!worker) return;
 
     try {
@@ -314,15 +333,11 @@ export class WorkerManager {
         },
       });
 
-      // Update worker status
-      await prisma.worker.update({
-        where: { id: worker.workerId },
-        data: { status: 'ONLINE' },
-      });
+      // Update worker status and broadcast
+      await this.updateWorkerStatus(worker.workerId, 'ONLINE');
 
-      // Broadcast updates
+      // Broadcast task update
       this.io.to(`task:${data.taskId}`).emit('task:updated', task);
-      this.io.emit('worker:updated', { id: worker.workerId, status: 'ONLINE' });
 
       // Handle PR review failure if this is a PR_REVIEW task
       if (task.taskType === 'PR_REVIEW') {
@@ -343,7 +358,7 @@ export class WorkerManager {
     socket: WorkerSocket,
     data: OrchestrationDecisionEvent
   ): Promise<void> {
-    const worker = this.workers.get(socket.id);
+    const worker = this.getConnectedWorker(socket.id);
     if (!worker) {
       console.error('[Orchestration] Decision from unknown socket');
       return;
@@ -377,18 +392,12 @@ export class WorkerManager {
   }
 
   private async handleDisconnect(socket: WorkerSocket): Promise<void> {
-    const worker = this.workers.get(socket.id);
+    const worker = this.getConnectedWorker(socket.id);
     if (!worker) return;
 
     try {
-      // Update worker status to offline
-      const updatedWorker = await prisma.worker.update({
-        where: { id: worker.workerId },
-        data: { status: 'OFFLINE' },
-      });
-
-      // Broadcast worker update
-      this.io.emit('worker:updated', updatedWorker);
+      // Update worker status to offline and broadcast
+      await this.updateWorkerStatus(worker.workerId, 'OFFLINE');
 
       // Clean up
       this.workers.delete(socket.id);
@@ -501,14 +510,8 @@ export class WorkerManager {
         console.log(`[Worker] Heartbeat timeout: ${worker.name} (last heartbeat ${Math.round((now - worker.lastHeartbeat.getTime()) / 1000)}s ago)`);
 
         try {
-          // Update database
-          const updatedWorker = await prisma.worker.update({
-            where: { id: worker.workerId },
-            data: { status: 'OFFLINE' },
-          });
-
-          // Broadcast worker update
-          this.io.emit('worker:updated', updatedWorker);
+          // Update database and broadcast
+          await this.updateWorkerStatus(worker.workerId, 'OFFLINE');
 
           // Force disconnect the socket
           worker.socket.disconnect(true);

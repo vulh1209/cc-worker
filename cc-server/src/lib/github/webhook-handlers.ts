@@ -10,6 +10,7 @@ import { addCommentReaction, getPullRequest } from './api-client';
 import type { PRReviewContext } from '@/types';
 
 const BOT_USERNAME = process.env.GITHUB_BOT_USERNAME || 'cc-worker-bot';
+const PR_REVIEW_TASK_PRIORITY = 50; // Medium-high priority for PR reviews
 
 // GitHub Webhook Payload Types
 interface GitHubUser {
@@ -409,7 +410,7 @@ async function createPRReviewTask(params: {
         data: {
           prompt,
           status: 'PENDING',
-          priority: 50, // Medium-high priority for PR reviews
+          priority: PR_REVIEW_TASK_PRIORITY,
           taskType: 'PR_REVIEW',
           workerId: targetWorkerId, // Pre-assign to specific worker
         },
