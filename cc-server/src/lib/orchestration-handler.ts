@@ -82,7 +82,10 @@ export class OrchestrationHandler {
       console.log(`[Orchestration] No available workers for task ${taskId}, keeping in queue`);
       await prisma.task.update({
         where: { id: taskId },
-        data: { status: 'PENDING' },
+        data: {
+          status: 'PENDING',
+          taskType: 'SUBTASK', // Skip orchestration next time - already routed
+        },
       });
       return;
     }
