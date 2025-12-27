@@ -1,9 +1,9 @@
 /**
- * Type declarations for @anthropic-ai/claude-code SDK
+ * Type declarations for @anthropic-ai/claude-agent-sdk SDK
  * The SDK doesn't ship with TypeScript definitions, so we declare them here.
  */
 
-declare module '@anthropic-ai/claude-code' {
+declare module '@anthropic-ai/claude-agent-sdk' {
   export interface SDKMessage {
     type: 'assistant' | 'user' | 'result' | string;
     session_id?: string;

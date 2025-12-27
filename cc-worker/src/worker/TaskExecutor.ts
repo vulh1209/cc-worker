@@ -1,4 +1,4 @@
-import { query, type SDKMessage, type SDKAssistantMessage, type SDKUserMessage } from '@anthropic-ai/claude-code';
+import { query, type SDKMessage, type SDKAssistantMessage, type SDKUserMessage } from '@anthropic-ai/claude-agent-sdk';
 import type { WorkerConfig } from '../config.js';
 import type { LogType, TaskLogEvent } from '../types/index.js';
 import { logger } from '../utils/logger.js';
