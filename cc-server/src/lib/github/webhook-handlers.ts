@@ -352,6 +352,24 @@ async function createPRReviewTask(params: {
     return null;
   }
 
+  // Check if review already exists for this PR + headSha
+  const existingReview = await prisma.gitHubPRReview.findUnique({
+    where: {
+      repositoryId_prNumber_headSha: {
+        repositoryId: repoConfig.id,
+        prNumber: pr.number,
+        headSha: pr.head.sha,
+      },
+    },
+  });
+
+  if (existingReview) {
+    console.log(
+      `[GitHub Webhook] Review already exists for PR #${pr.number} @ ${pr.head.sha.substring(0, 7)}, skipping`
+    );
+    return existingReview.taskId;
+  }
+
   // Fetch the diff
   const diff = await fetchPRDiff(
     installationId,

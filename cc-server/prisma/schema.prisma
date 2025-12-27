@@ -291,7 +291,7 @@ model GitHubPRReview {
   taskId       String?        @unique
   task         Task?          @relation(fields: [taskId], references: [id])
   status       PRReviewStatus @default(PENDING)
-  commentId    Int?           // GitHub comment ID for updates
+  commentId    BigInt?        // GitHub comment ID for updates
   triggeredBy  String         // "auto" | "mention:username"
   createdAt    DateTime       @default(now())
   updatedAt    DateTime       @updatedAt

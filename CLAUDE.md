@@ -88,3 +88,29 @@ Required: `DATABASE_URL` (PostgreSQL connection string)
 - Tasks have `priority` field for queue ordering (higher = more priority)
 - TaskLogs store JSON content for flexible log types (tool calls, thinking, etc.)
 - TaskMetric aggregates daily stats per worker for analytics page
+
+## GitHub PR Review Integration
+
+The system supports automated PR code reviews via GitHub App integration.
+
+### Setup
+1. Create a GitHub App with webhook events: `pull_request`, `issue_comment`, `installation`
+2. Configure webhook URL: `https://your-server.com/api/webhooks/github`
+3. Set environment variables:
+   - `GITHUB_APP_ID` - App ID from GitHub
+   - `GITHUB_PRIVATE_KEY` - Private key (PEM format, base64 encoded)
+   - `GITHUB_WEBHOOK_SECRET` - Webhook secret for signature verification
+   - `GITHUB_BOT_USERNAME` - Bot username for @mention detection
+
+### Worker-Repository Assignment
+Workers can be assigned to specific repos for PR review routing:
+- Via worker config: `"assignedRepos": ["owner/repo"]` in `cc-worker.config.json`
+- Via API: `POST /api/workers/{id}/repositories`
+- Via script: `pnpm run db:assign-repo` in cc-server
+
+### PR Review Flow
+1. GitHub webhook triggers on PR open or @bot mention in PR comment
+2. Server finds worker assigned to the repository
+3. Task created with type `PR_REVIEW` and assigned to specific worker
+4. Worker executes review using Claude
+5. Result posted as GitHub PR comment automatically
