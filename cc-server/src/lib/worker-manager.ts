@@ -163,7 +163,16 @@ export class WorkerManager {
       // Broadcast worker update to dashboard
       this.io.emit('worker:updated', updatedWorker);
 
-      console.log(`[Worker] Registered: ${worker.name} (${worker.id})`);
+      // Handle assigned repos from worker config - sync to WorkerRepository table
+      const configRepos = data.assignedRepos || [];
+      if (configRepos.length > 0) {
+        await this.syncWorkerRepoAssignments(worker.id, configRepos);
+      }
+
+      const repoInfo = configRepos.length
+        ? ` [repos: ${configRepos.join(', ')}]`
+        : '';
+      console.log(`[Worker] Registered: ${worker.name} (${worker.id})${repoInfo}`);
     } catch (error) {
       console.error('[Worker] Registration error:', error);
       socket.emit('error', { message: 'Registration failed' });
@@ -538,6 +547,50 @@ export class WorkerManager {
       clearInterval(this.heartbeatCheckInterval);
       this.heartbeatCheckInterval = null;
       console.log('[WorkerManager] Heartbeat monitor stopped');
+    }
+  }
+
+  /**
+   * Sync worker's GitHub repository assignments
+   * Creates WorkerRepository records for repos that exist in DB
+   */
+  private async syncWorkerRepoAssignments(
+    workerId: string,
+    repoFullNames: string[]
+  ): Promise<void> {
+    for (const fullName of repoFullNames) {
+      try {
+        // Find repo by fullName (e.g., "owner/repo")
+        const repo = await prisma.gitHubRepository.findFirst({
+          where: { fullName },
+        });
+
+        if (!repo) {
+          console.log(`[Worker] Repo ${fullName} not found in DB, skipping assignment`);
+          continue;
+        }
+
+        // Create or update assignment
+        await prisma.workerRepository.upsert({
+          where: {
+            workerId_repositoryId: {
+              workerId,
+              repositoryId: repo.id,
+            },
+          },
+          create: {
+            workerId,
+            repositoryId: repo.id,
+          },
+          update: {
+            // Just touch the record to confirm it still exists
+          },
+        });
+
+        console.log(`[Worker] Assigned to repo: ${fullName}`);
+      } catch (error) {
+        console.error(`[Worker] Failed to assign repo ${fullName}:`, error);
+      }
     }
   }
 }

@@ -33,7 +33,7 @@ model Worker {
   owner      User?         @relation("OwnedWorkers", fields: [ownerId], references: [id])
   sharedWith WorkerShare[]
 
-  // GitHub repository assignments (for PR review routing)
+  // GitHub repository assignments for PR review routing
   assignedRepos WorkerRepository[]
 
   @@index([status])

@@ -114,6 +114,7 @@ export interface WorkerRegisterEvent {
   os: string;
   hostname: string;
   isOrchestrator?: boolean;  // Worker can self-register as orchestrator
+  assignedRepos?: string[];  // GitHub repos worker is assigned to (e.g., ["owner/repo"])
 }
 
 export interface WorkerHeartbeatEvent {

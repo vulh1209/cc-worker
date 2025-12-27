@@ -13,7 +13,8 @@
     "db:generate": "prisma generate",
     "db:studio": "prisma studio",
     "db:seed": "tsx prisma/seed.ts",
-    "db:assign-workers": "tsx scripts/assign-workers-to-admin.ts"
+    "db:assign-workers": "tsx scripts/assign-workers-to-admin.ts",
+    "db:assign-repo": "tsx scripts/assign-worker-to-repo.ts"
   },
   "dependencies": {
     "@prisma/client": "^6.19.1",
