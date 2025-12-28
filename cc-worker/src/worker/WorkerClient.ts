@@ -6,6 +6,13 @@ import { OrchestratorExecutor } from './OrchestratorExecutor.js';
 import { logger } from '../utils/logger.js';
 import { getSystemInfo, formatSystemInfo } from '../utils/system-info.js';
 
+/** Tracking info for a running task */
+interface RunningTask {
+  taskId: string;
+  startedAt: Date;
+  isWorktree: boolean;
+}
+
 export class WorkerClient {
   private config: WorkerConfig;
   private wsClient: WebSocketClient;
@@ -13,13 +20,41 @@ export class WorkerClient {
   private orchestratorExecutor: OrchestratorExecutor;
   private isRunning = false;
 
+  // Multi-task support
+  private runningTasks: Map<string, RunningTask> = new Map();
+  private maxConcurrentTasks: number;
+  private useWorktreeMode: boolean;
+
   constructor(config: WorkerConfig) {
     this.config = config;
     this.wsClient = new WebSocketClient(config);
     this.taskExecutor = new TaskExecutor(config);
     this.orchestratorExecutor = new OrchestratorExecutor(config);
 
+    // Multi-task configuration
+    this.maxConcurrentTasks = config.maxConcurrentTasks || 1;
+    // Enable worktree mode when maxConcurrentTasks > 1
+    this.useWorktreeMode = this.maxConcurrentTasks > 1;
+
+    if (this.useWorktreeMode) {
+      logger.info(`[WorkerClient] Multi-task mode enabled: max ${this.maxConcurrentTasks} concurrent tasks with worktrees`);
+    }
+
     this.setupEventHandlers();
+  }
+
+  /**
+   * Check if worker can accept more tasks
+   */
+  private canAcceptTask(): boolean {
+    return this.runningTasks.size < this.maxConcurrentTasks;
+  }
+
+  /**
+   * Get current running task count
+   */
+  get runningTaskCount(): number {
+    return this.runningTasks.size;
   }
 
   private setupEventHandlers(): void {
@@ -56,36 +91,80 @@ export class WorkerClient {
     // Check if this is an orchestration task (REGULAR task sent to orchestrator)
     const isOrchestrationTask = this.config.isOrchestrator && taskType === 'REGULAR';
 
-    // Check if already executing a task
-    const isBusy = isOrchestrationTask
-      ? this.orchestratorExecutor.isAnalyzing
-      : this.taskExecutor.isExecuting;
-
-    if (isBusy) {
-      const currentTask = isOrchestrationTask
-        ? this.orchestratorExecutor.currentTask
-        : this.taskExecutor.currentTask;
-      logger.warn(`Cannot accept task ${taskId}: already executing ${currentTask}`);
-      this.wsClient.sendTaskFailed({
-        taskId,
-        error: 'Worker is busy with another task',
-      });
-      return;
+    // Check capacity based on mode
+    if (isOrchestrationTask) {
+      // Orchestrator tasks are still single-threaded
+      if (this.orchestratorExecutor.isAnalyzing) {
+        logger.warn(`Cannot accept orchestration task ${taskId}: already analyzing`);
+        this.wsClient.sendTaskFailed({
+          taskId,
+          error: 'Orchestrator is busy with another analysis',
+        });
+        return;
+      }
+    } else {
+      // For regular tasks, check multi-task capacity
+      if (!this.canAcceptTask()) {
+        logger.warn(`Cannot accept task ${taskId}: at capacity (${this.runningTasks.size}/${this.maxConcurrentTasks})`);
+        this.wsClient.sendTaskFailed({
+          taskId,
+          error: `Worker at capacity (${this.runningTasks.size}/${this.maxConcurrentTasks} tasks)`,
+        });
+        return;
+      }
     }
 
-    // Update status to BUSY
-    this.wsClient.updateStatus('BUSY');
+    // Update status to BUSY (if this is the first task or we're at capacity)
+    if (this.runningTasks.size === 0 || this.runningTasks.size + 1 >= this.maxConcurrentTasks) {
+      this.wsClient.updateStatus('BUSY');
+    }
 
     if (isOrchestrationTask) {
-      // Handle as orchestration task
+      // Handle as orchestration task (blocking)
       await this.handleOrchestrationTask(taskId, prompt, orchestrationDepth || 0, availableWorkers || []);
+      // Update status back to ONLINE after orchestration
+      if (this.runningTasks.size === 0) {
+        this.wsClient.updateStatus('ONLINE');
+      }
     } else {
-      // Handle as regular task execution
-      await this.handleRegularTask(taskId, prompt, sessionId, parentTaskId);
+      // Handle as regular task execution (non-blocking for multi-task mode)
+      // Don't await - let it run in background for parallel execution
+      this.executeTaskAsync(taskId, prompt, sessionId, parentTaskId);
     }
+  }
 
-    // Update status back to ONLINE
-    this.wsClient.updateStatus('ONLINE');
+  /**
+   * Execute task asynchronously (for multi-task support)
+   */
+  private async executeTaskAsync(
+    taskId: string,
+    prompt: string,
+    sessionId?: string,
+    parentTaskId?: string
+  ): Promise<void> {
+    // Track this task
+    this.runningTasks.set(taskId, {
+      taskId,
+      startedAt: new Date(),
+      isWorktree: this.useWorktreeMode,
+    });
+
+    try {
+      await this.handleRegularTask(taskId, prompt, sessionId, parentTaskId);
+    } finally {
+      // Remove from tracking
+      this.runningTasks.delete(taskId);
+
+      // Update status to ONLINE if no more tasks
+      if (this.runningTasks.size === 0) {
+        this.wsClient.updateStatus('ONLINE');
+      } else if (this.canAcceptTask()) {
+        // Still have capacity, make sure we're not stuck in BUSY
+        this.wsClient.updateStatus('ONLINE');
+      }
+
+      logger.info(`[WorkerClient] Task ${taskId} finished. Running: ${this.runningTasks.size}/${this.maxConcurrentTasks}`);
+    }
   }
 
   /**
@@ -146,19 +225,35 @@ export class WorkerClient {
       logger.info(`Received follow-up task ${taskId} (parent: ${parentTaskId}, session: ${sessionId})`);
     }
 
+    // Log multi-task status
+    if (this.useWorktreeMode) {
+      logger.info(`[WorkerClient] Starting task ${taskId} with worktree mode. Running: ${this.runningTasks.size}/${this.maxConcurrentTasks}`);
+    }
+
     // Notify server that task has started
     this.wsClient.sendTaskStarted({ taskId });
 
-    // Execute the task with optional session resume
-    const result = await this.taskExecutor.execute(taskId, prompt, (log) => {
-      // Stream logs to server
-      this.wsClient.sendTaskLog({
-        taskId,
-        type: log.type,
-        content: log.content,
-        timestamp: new Date().toISOString(),
-      });
-    }, sessionId);  // Pass sessionId for resume
+    // Execute the task with optional session resume and worktree options
+    const result = await this.taskExecutor.execute(
+      taskId,
+      prompt,
+      (log) => {
+        // Stream logs to server
+        this.wsClient.sendTaskLog({
+          taskId,
+          type: log.type,
+          content: log.content,
+          timestamp: new Date().toISOString(),
+        });
+      },
+      sessionId,  // Pass sessionId for resume
+      {
+        // Use worktree mode when multi-task is enabled
+        useWorktree: this.useWorktreeMode,
+        // Auto-commit changes when using worktree
+        autoCommit: this.useWorktreeMode,
+      }
+    );
 
     // Send result to server
     if (result.success) {
@@ -179,7 +274,15 @@ export class WorkerClient {
   private handleTaskCancelled(data: TaskCancelEvent): void {
     const { taskId } = data;
 
-    if (this.taskExecutor.currentTask === taskId) {
+    // Check if task is running
+    if (this.runningTasks.has(taskId)) {
+      const cancelled = this.taskExecutor.cancel();
+      if (cancelled) {
+        logger.info(`Task ${taskId} cancelled successfully`);
+        this.runningTasks.delete(taskId);
+      }
+    } else if (this.taskExecutor.currentTask === taskId) {
+      // Fallback for single-task mode
       const cancelled = this.taskExecutor.cancel();
       if (cancelled) {
         logger.info(`Task ${taskId} cancelled successfully`);
@@ -225,6 +328,13 @@ export class WorkerClient {
     console.log(`  Mode: ${this.config.isOrchestrator ? 'Orchestrator (task routing)' : 'Worker (task execution)'}`);
     console.log(`  Server: ${this.config.serverUrl}`);
     console.log(`  Working Dir: ${this.config.workingDirectory}`);
+    // Show multi-task info
+    if (this.useWorktreeMode) {
+      console.log(`  Multi-Task: Enabled (max ${this.maxConcurrentTasks} concurrent tasks)`);
+      console.log(`  Worktree Mode: Enabled (isolated execution)`);
+    } else {
+      console.log(`  Multi-Task: Disabled (single task mode)`);
+    }
     console.log();
     console.log('  System Info:');
     formatSystemInfo(systemInfo).split('\n').forEach((line) => {
@@ -239,7 +349,7 @@ export class WorkerClient {
       // Handle process termination
       const shutdown = async () => {
         logger.info('Shutting down worker...');
-        this.stop();
+        await this.stop();
         resolve();
       };
 
@@ -247,9 +357,9 @@ export class WorkerClient {
       process.on('SIGTERM', shutdown);
 
       // Handle uncaught errors
-      process.on('uncaughtException', (error) => {
+      process.on('uncaughtException', async (error) => {
         logger.error('Uncaught exception:', error);
-        this.stop();
+        await this.stop();
         reject(error);
       });
 
@@ -259,14 +369,27 @@ export class WorkerClient {
     });
   }
 
-  stop(): void {
+  async stop(): Promise<void> {
     if (!this.isRunning) return;
 
     logger.info('Stopping worker...');
 
-    // Cancel any running task
+    // Cancel any running tasks
     if (this.taskExecutor.isExecuting) {
       this.taskExecutor.cancel();
+    }
+
+    // Clear running tasks tracking
+    this.runningTasks.clear();
+
+    // Cleanup worktrees if in worktree mode
+    if (this.useWorktreeMode) {
+      logger.info('Cleaning up worktrees...');
+      try {
+        await this.taskExecutor.cleanupAllWorktrees();
+      } catch (error) {
+        logger.warn('Failed to cleanup worktrees:', error);
+      }
     }
 
     // Disconnect from server
