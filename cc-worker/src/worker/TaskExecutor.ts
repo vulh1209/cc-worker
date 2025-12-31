@@ -2,6 +2,8 @@ import { query, type SDKMessage, type SDKAssistantMessage, type SDKUserMessage }
 import type { WorkerConfig } from '../config.js';
 import type { LogType, TaskLogEvent } from '../types/index.js';
 import { logger } from '../utils/logger.js';
+import { PreflightChecker } from './PreflightChecker.js';
+import { WorktreeManager, GitOperations } from '../git/index.js';
 
 // Content block types from Anthropic SDK
 type TextBlock = { type: 'text'; text: string };
@@ -22,20 +24,59 @@ export interface TaskLogCallback {
   (log: Omit<TaskLogEvent, 'taskId' | 'timestamp'>): void;
 }
 
+export interface TaskExecuteOptions {
+  /** Type of task being executed */
+  taskType?: string;
+  /** Skip preflight checks */
+  skipPreflight?: boolean;
+  /** Custom working directory (overrides config) */
+  workingDirectory?: string;
+  /** Use worktree mode for isolated execution */
+  useWorktree?: boolean;
+  /** Base branch for worktree (default: main) */
+  baseBranch?: string;
+  /** Whether to auto-commit and push changes after execution */
+  autoCommit?: boolean;
+}
+
 export class TaskExecutor {
   private config: WorkerConfig;
   private abortController: AbortController | null = null;
   private currentTaskId: string | null = null;
+  private preflightChecker: PreflightChecker;
+  private worktreeManager: WorktreeManager | null = null;
+  private activeWorktrees: Map<string, string> = new Map(); // taskId -> worktreePath
 
   constructor(config: WorkerConfig) {
     this.config = config;
+    this.preflightChecker = new PreflightChecker();
+
+    // Initialize worktree manager if working directory is set
+    if (config.workingDirectory) {
+      this.worktreeManager = new WorktreeManager(config.workingDirectory);
+    }
+  }
+
+  /**
+   * Get the worktree manager instance
+   */
+  getWorktreeManager(): WorktreeManager | null {
+    return this.worktreeManager;
+  }
+
+  /**
+   * Get active worktrees map
+   */
+  getActiveWorktrees(): Map<string, string> {
+    return new Map(this.activeWorktrees);
   }
 
   async execute(
     taskId: string,
     prompt: string,
     onLog: TaskLogCallback,
-    resumeSessionId?: string  // Optional session ID to resume
+    resumeSessionId?: string,  // Optional session ID to resume
+    options?: TaskExecuteOptions
   ): Promise<TaskExecutionResult> {
     this.currentTaskId = taskId;
     this.abortController = new AbortController();
@@ -58,20 +99,96 @@ export class TaskExecutor {
       },
     });
 
+    let worktreePath: string | null = null;
+    const useWorktree = options?.useWorktree ?? false;
+
     try {
-      // Validate working directory
-      let cwd = this.config.workingDirectory;
-      if (!cwd || typeof cwd !== 'string') {
-        throw new Error(`Invalid working directory: ${cwd}. Please set CC_WORKING_DIR environment variable.`);
+      // Validate base working directory
+      let baseCwd = options?.workingDirectory || this.config.workingDirectory;
+      if (!baseCwd || typeof baseCwd !== 'string') {
+        throw new Error(`Invalid working directory: ${baseCwd}. Please set CC_WORKING_DIR environment variable.`);
       }
 
       // Normalize path for Windows (convert forward slashes to backslashes if on Windows)
-      if (process.platform === 'win32' && cwd.includes('/')) {
-        cwd = cwd.replace(/\//g, '\\');
-        logger.info(`Normalized Windows path: ${cwd}`);
+      if (process.platform === 'win32' && baseCwd.includes('/')) {
+        baseCwd = baseCwd.replace(/\//g, '\\');
+        logger.info(`Normalized Windows path: ${baseCwd}`);
       }
 
-      logger.info(`Using working directory: ${cwd}`);
+      // Determine actual working directory (worktree or base)
+      let cwd = baseCwd;
+
+      // Create worktree if requested
+      if (useWorktree && this.worktreeManager) {
+        onLog({
+          type: 'SYSTEM',
+          content: { message: 'Creating isolated worktree for task...' },
+        });
+
+        try {
+          worktreePath = await this.worktreeManager.createWorktree(taskId, {
+            baseBranch: options?.baseBranch || 'main',
+          });
+          this.activeWorktrees.set(taskId, worktreePath);
+          cwd = worktreePath;
+
+          onLog({
+            type: 'SYSTEM',
+            content: {
+              message: 'Worktree created successfully',
+              worktreePath,
+              branch: `nightshift/task_${taskId}`,
+            },
+          });
+        } catch (worktreeError) {
+          const errorMsg = worktreeError instanceof Error ? worktreeError.message : String(worktreeError);
+          logger.error(`[Worktree] Failed to create worktree: ${errorMsg}`);
+          onLog({
+            type: 'ERROR',
+            content: { message: `Failed to create worktree: ${errorMsg}` },
+          });
+          throw new Error(`Worktree creation failed: ${errorMsg}`);
+        }
+      }
+
+      logger.info(`Using working directory: ${cwd}${useWorktree ? ' (worktree)' : ''}`);
+
+      // Run preflight checks (unless skipped)
+      if (!options?.skipPreflight) {
+        onLog({
+          type: 'SYSTEM',
+          content: { message: 'Running preflight checks...' },
+        });
+
+        const preflightResult = await this.preflightChecker.runChecks({
+          repoPath: cwd,
+          taskType: options?.taskType,
+          // Skip git clean check for worktrees (they start clean)
+          skipChecks: useWorktree ? { gitClean: true } : undefined,
+        });
+
+        // Log preflight result
+        onLog({
+          type: 'SYSTEM',
+          content: {
+            message: preflightResult.passed ? 'Preflight checks passed' : 'Preflight checks failed',
+            checks: preflightResult.checks,
+            duration: preflightResult.duration,
+            ...(preflightResult.warnings.length > 0 && { warnings: preflightResult.warnings }),
+          },
+        });
+
+        if (!preflightResult.passed) {
+          const errorMsg = `Preflight failed: ${preflightResult.errors.join('; ')}`;
+          logger.error(`[Preflight] ${errorMsg}`);
+          throw new Error(errorMsg);
+        }
+
+        // Log warnings if any
+        for (const warning of preflightResult.warnings) {
+          logger.warn(`[Preflight] Warning: ${warning}`);
+        }
+      }
 
       // Build query options with optional session resume
       const queryOptions: Parameters<typeof query>[0]['options'] = {
@@ -135,6 +252,54 @@ export class TaskExecutor {
       const duration = Date.now() - startTime;
       logger.taskComplete(taskId, duration);
 
+      // Handle auto-commit and push for worktree mode
+      if (useWorktree && worktreePath && options?.autoCommit) {
+        onLog({
+          type: 'SYSTEM',
+          content: { message: 'Auto-committing and pushing changes...' },
+        });
+
+        try {
+          const gitOps = new GitOperations(worktreePath);
+          const hasChanges = await gitOps.hasUncommittedChanges();
+
+          if (hasChanges) {
+            const commitMsg = await gitOps.generateCommitMessage();
+            const commit = await gitOps.stageAndCommit(commitMsg);
+
+            if (commit) {
+              onLog({
+                type: 'SYSTEM',
+                content: {
+                  message: 'Changes committed',
+                  commit: commit.shortHash,
+                  commitMessage: commit.message,
+                },
+              });
+
+              // Push to remote
+              await gitOps.push({ setUpstream: true });
+              onLog({
+                type: 'SYSTEM',
+                content: { message: 'Changes pushed to remote' },
+              });
+            }
+          } else {
+            onLog({
+              type: 'SYSTEM',
+              content: { message: 'No changes to commit' },
+            });
+          }
+        } catch (gitError) {
+          const gitErrorMsg = gitError instanceof Error ? gitError.message : String(gitError);
+          logger.warn(`[Git] Auto-commit failed: ${gitErrorMsg}`);
+          onLog({
+            type: 'SYSTEM',
+            content: { message: `Auto-commit failed: ${gitErrorMsg}` },
+          });
+        }
+      }
+
       onLog({
         type: 'SYSTEM',
         content: { message: 'Task completed successfully', sessionId: capturedSessionId },
@@ -164,6 +329,17 @@ export class TaskExecutor {
         sessionId: capturedSessionId,  // Return session even on failure
       };
     } finally {
+      // Cleanup worktree if used
+      if (useWorktree && worktreePath && this.worktreeManager) {
+        try {
+          await this.worktreeManager.removeWorktree(taskId, { deleteBranch: false });
+          this.activeWorktrees.delete(taskId);
+          logger.info(`[Worktree] Cleaned up worktree for task ${taskId}`);
+        } catch (cleanupError) {
+          logger.warn(`[Worktree] Failed to cleanup worktree: ${cleanupError}`);
+        }
+      }
+
       this.abortController = null;
       this.currentTaskId = null;
     }
@@ -288,11 +464,42 @@ export class TaskExecutor {
     return false;
   }
 
+  /**
+   * Cleanup all active worktrees (call during shutdown)
+   */
+  async cleanupAllWorktrees(): Promise<void> {
+    if (!this.worktreeManager) return;
+
+    logger.info('[TaskExecutor] Cleaning up all active worktrees...');
+
+    for (const [taskId] of this.activeWorktrees) {
+      try {
+        await this.worktreeManager.removeWorktree(taskId, { deleteBranch: false });
+        logger.info(`[TaskExecutor] Cleaned up worktree for task ${taskId}`);
+      } catch (error) {
+        logger.warn(`[TaskExecutor] Failed to cleanup worktree for task ${taskId}: ${error}`);
+      }
+    }
+
+    this.activeWorktrees.clear();
+
+    // Also cleanup any stale worktrees
+    try {
+      await this.worktreeManager.cleanupStale(24); // 24 hours
+    } catch (error) {
+      logger.warn(`[TaskExecutor] Failed to cleanup stale worktrees: ${error}`);
+    }
+  }
+
   get isExecuting(): boolean {
     return this.currentTaskId !== null;
   }
 
   get currentTask(): string | null {
     return this.currentTaskId;
+  }
+
+  get activeWorktreeCount(): number {
+    return this.activeWorktrees.size;
   }
 }

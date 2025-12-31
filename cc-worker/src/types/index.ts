@@ -204,3 +204,100 @@ export interface PRLineComment {
   body: string;
   severity: 'suggestion' | 'warning' | 'blocker';
 }
+
+// ============================================================================
+// Workflow Types (NightShift-inspired multi-step execution)
+// ============================================================================
+
+export type WorkflowExecutionStatus =
+  | 'PENDING'
+  | 'RUNNING'
+  | 'PAUSED'
+  | 'COMPLETED'
+  | 'FAILED'
+  | 'CANCELLED';
+
+export type WorkflowModel = 'sonnet' | 'haiku' | 'opus';
+
+/**
+ * Single step in a workflow
+ */
+export interface WorkflowStep {
+  /** Step name for display/logging */
+  name: string;
+  /** Prompt template (supports {{variable}} substitution) */
+  prompt: string;
+  /** Model to use for this step */
+  model?: WorkflowModel;
+  /** Allowed tools for this step (empty = all tools allowed) */
+  allowedTools?: string[];
+  /** Maximum conversation turns for this step */
+  maxTurns?: number;
+  /** Whether to preserve context from previous step */
+  continueFromPrevious?: boolean;
+  /** Conditional behavior */
+  conditions?: {
+    /** Action on success: continue to next, skip to end, or jump to step index */
+    onSuccess?: 'continue' | 'skip_to_end' | number;
+    /** Action on failure: fail workflow, retry step, skip step, or jump to step index */
+    onFailure?: 'fail' | 'retry' | 'skip' | number;
+    /** Max retries if onFailure is 'retry' */
+    maxRetries?: number;
+  };
+}
+
+/**
+ * Complete workflow definition
+ */
+export interface Workflow {
+  id: string;
+  name: string;
+  description?: string;
+  steps: WorkflowStep[];
+  defaultModel?: WorkflowModel;
+  isActive: boolean;
+}
+
+/**
+ * Result from a single workflow step
+ */
+export interface WorkflowStepResult {
+  stepIndex: number;
+  stepName: string;
+  status: 'completed' | 'failed' | 'skipped';
+  result?: string;
+  error?: string;
+  duration: number;
+  taskId?: string;
+}
+
+/**
+ * Variables that can be substituted in workflow prompts
+ */
+export interface WorkflowVariables {
+  [key: string]: string | number | boolean;
+}
+
+/**
+ * Full workflow execution result
+ */
+export interface WorkflowExecutionResult {
+  success: boolean;
+  status: WorkflowExecutionStatus;
+  stepResults: WorkflowStepResult[];
+  totalDuration: number;
+  error?: string;
+}
+
+/**
+ * Event for workflow execution updates
+ */
+export interface WorkflowExecutionEvent {
+  workflowId: string;
+  executionId: string;
+  type: 'step_started' | 'step_completed' | 'step_failed' | 'execution_completed' | 'execution_failed';
+  stepIndex?: number;
+  stepName?: string;
+  result?: WorkflowStepResult;
+  error?: string;
+}
